@@ -1,0 +1,692 @@
+[
+  {
+    "type": "constructor",
+    "inputs": [
+      {
+        "name": "initialAdmin",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "ARBITER_ROLE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "GOVERNOR_ROLE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MODULE_ROLE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "PAUSER_ROLE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "REASON_DISPUTE_HISTORY",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "REASON_FRAUD_HISTORY",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "REASON_HIGH_RISK",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "REASON_SMALL_LOW_RISK",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "REASON_UNDERWORLD",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "REASON_VERIFIED_DISCOUNT",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "REASON_VOLUME",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "RESOLVER_ROLE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "admin",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "calculateBond",
+    "inputs": [
+      {
+        "name": "context",
+        "type": "tuple",
+        "internalType": "struct CreationBondPolicy.BondContext",
+        "components": [
+          {
+            "name": "entityType",
+            "type": "uint8",
+            "internalType": "enum AlterfordTypes.EntityType"
+          },
+          {
+            "name": "mode",
+            "type": "uint8",
+            "internalType": "enum AlterfordTypes.Mode"
+          },
+          {
+            "name": "creatorTier",
+            "type": "uint8",
+            "internalType": "enum AlterfordTypes.CreatorTier"
+          },
+          {
+            "name": "categoryRisk",
+            "type": "uint8",
+            "internalType": "enum AlterfordTypes.RiskLevel"
+          },
+          {
+            "name": "reputation",
+            "type": "uint8",
+            "internalType": "enum AlterfordTypes.ReputationBand"
+          },
+          {
+            "name": "expectedVolume",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "disputeCount",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "fraudCount",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "config",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "minBond",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "lowRiskBaseBond",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "standardBaseBond",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "highRiskBaseBond",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "maxBond",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "smallMarketVolumeThreshold",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "volumeStep",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "volumeStepBond",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "verifiedDiscountBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "premiumDiscountBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "underworldMultiplierBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "highRiskMultiplierBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "disputeSurchargeBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "fraudMultiplierBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "hasRole",
+    "inputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "pause",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "paused",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "previewBond",
+    "inputs": [
+      {
+        "name": "context",
+        "type": "tuple",
+        "internalType": "struct CreationBondPolicy.BondContext",
+        "components": [
+          {
+            "name": "entityType",
+            "type": "uint8",
+            "internalType": "enum AlterfordTypes.EntityType"
+          },
+          {
+            "name": "mode",
+            "type": "uint8",
+            "internalType": "enum AlterfordTypes.Mode"
+          },
+          {
+            "name": "creatorTier",
+            "type": "uint8",
+            "internalType": "enum AlterfordTypes.CreatorTier"
+          },
+          {
+            "name": "categoryRisk",
+            "type": "uint8",
+            "internalType": "enum AlterfordTypes.RiskLevel"
+          },
+          {
+            "name": "reputation",
+            "type": "uint8",
+            "internalType": "enum AlterfordTypes.ReputationBand"
+          },
+          {
+            "name": "expectedVolume",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "disputeCount",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "fraudCount",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "reasonFlags",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "setRole",
+    "inputs": [
+      {
+        "name": "role",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "account",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "enabled",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "unpause",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "updateConfig",
+    "inputs": [
+      {
+        "name": "nextConfig",
+        "type": "tuple",
+        "internalType": "struct CreationBondPolicy.BondConfig",
+        "components": [
+          {
+            "name": "minBond",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "lowRiskBaseBond",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "standardBaseBond",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "highRiskBaseBond",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "maxBond",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "smallMarketVolumeThreshold",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "volumeStep",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "volumeStepBond",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "verifiedDiscountBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "premiumDiscountBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "underworldMultiplierBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "highRiskMultiplierBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "disputeSurchargeBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "fraudMultiplierBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          }
+        ]
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "event",
+    "name": "BondPolicyUpdated",
+    "inputs": [
+      {
+        "name": "config",
+        "type": "tuple",
+        "indexed": false,
+        "internalType": "struct CreationBondPolicy.BondConfig",
+        "components": [
+          {
+            "name": "minBond",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "lowRiskBaseBond",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "standardBaseBond",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "highRiskBaseBond",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "maxBond",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "smallMarketVolumeThreshold",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "volumeStep",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "volumeStepBond",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "verifiedDiscountBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "premiumDiscountBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "underworldMultiplierBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "highRiskMultiplierBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "disputeSurchargeBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "fraudMultiplierBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          }
+        ]
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "Paused",
+    "inputs": [
+      {
+        "name": "by",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "RoleUpdated",
+    "inputs": [
+      {
+        "name": "role",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "account",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "enabled",
+        "type": "bool",
+        "indexed": false,
+        "internalType": "bool"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "Unpaused",
+    "inputs": [
+      {
+        "name": "by",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "error",
+    "name": "InvalidBondPolicy",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "Unauthorized",
+    "inputs": []
+  }
+]

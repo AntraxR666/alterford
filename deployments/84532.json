@@ -1,0 +1,40 @@
+{
+  "chainId": 84532,
+  "chainName": "Base Sepolia",
+  "rpcUrl": "https://sepolia.base.org",
+  "deployer": "0x6Bb15228CFC4CA9f39FD76EA1dbF98A9E53be772",
+  "deployedAt": "2026-07-05T04:01:55.141Z",
+  "contracts": {
+    "settlementToken": {
+      "address": "0x13e136d971ab620d94213725bd5e14944f71427c",
+      "txHash": "0xd5e2271a70ad4e44dbe9e06ab8d52b89302f5660aaab128ec770f8914980f14c",
+      "artifact": "MockSettlementToken.sol/MockSettlementToken.json",
+      "blockNumber": 43727910
+    },
+    "creationBondPolicy": {
+      "address": "0x7b881b34eb2319d4e52b29f5cb703a2d6a7c7278",
+      "txHash": "0xcba5f9c6be7725954861a433c95ebdbe5e958ce2842dd3f9d375567797784694",
+      "artifact": "CreationBondPolicy.sol/CreationBondPolicy.json",
+      "blockNumber": 43727911
+    },
+    "marketFactory": {
+      "address": "0xff999c9dce00afaed5c5ea37b5ff2b52f59b0954",
+      "txHash": "0xe4599391ed9118ebf8e872883dde50c5d6f29339385c9951641b167ec0fae7d3",
+      "artifact": "MarketFactory.sol/MarketFactory.json",
+      "blockNumber": 43727912
+    },
+    "bountyFactory": {
+      "address": "0xd1aa1350f7c6d75171eb1335064a2eb5738e0fca",
+      "txHash": "0x76459f30157d353b6e2476b46ef5103e61f1b6a00767ff5c29c57898f2542568",
+      "artifact": "BountyFactory.sol/BountyFactory.json",
+      "blockNumber": 43727913
+    },
+    "challengeFactory": {
+      "address": "0xa1e9487ab3f5b55766e7908f4113d9a61a213996",
+      "txHash": "0x8db2a09a3c3fe42ca60e7f876ed87202e55720a006e82a2b8fe2a0df9f6ce5fc",
+      "artifact": "ChallengeFactory.sol/ChallengeFactory.json",
+      "blockNumber": 43727914
+    }
+  },
+  "startBlock": 43727910
+}

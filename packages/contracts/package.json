@@ -1,0 +1,12 @@
+{
+  "name": "@alterford/contracts",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "forge build",
+    "test": "forge test",
+    "typecheck": "forge build",
+    "lint": "forge fmt --check"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "@alterford/web",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --environment jsdom",
+    "lint": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@alterford/sdk": "workspace:*",
+    "qrcode.react": "^4.2.0"
+  }
+}

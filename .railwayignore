@@ -1,0 +1,15 @@
+node_modules
+**/node_modules
+dist
+**/dist
+coverage
+.vite
+.env
+.env.*
+data
+**/data
+cache
+out
+broadcast
+*.log
+slither-report.json

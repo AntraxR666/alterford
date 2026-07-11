@@ -1,0 +1,10 @@
+{
+  "name": "Alterford",
+  "short_name": "Alterford",
+  "description": "Web3 prediction markets, bounties, challenges, and social entertainment on Base.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#05070d",
+  "theme_color": "#0f172a",
+  "icons": []
+}

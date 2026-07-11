@@ -1,0 +1,16 @@
+node_modules/
+dist/
+coverage/
+.vite/
+.env
+.env.*
+!.env.example
+cache/
+data/
+out/
+broadcast/
+.superpowers/
+.venv*/
+slither-report.json
+*.log
+pnpm-debug.log*
