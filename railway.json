@@ -1,8 +1,7 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
-    "builder": "NIXPACKS",
-    "buildCommand": "corepack enable && corepack prepare pnpm@11.5.3 --activate && pnpm install --frozen-lockfile && pnpm --filter @alterford/sdk build && pnpm --filter @alterford/indexer build"
+    "builder": "DOCKERFILE"
   },
   "deploy": {
     "startCommand": "pnpm --filter @alterford/indexer start",
