@@ -4,6 +4,9 @@
   "private": true,
   "description": "Alterford Web3 prediction markets, bounties, challenges, and social entertainment ecosystem.",
   "type": "module",
+  "engines": {
+    "node": ">=22 <23"
+  },
   "scripts": {
     "build": "pnpm -r --filter @alterford/sdk --filter @alterford/web --filter @alterford/indexer build",
     "typecheck": "pnpm -r --filter @alterford/sdk --filter @alterford/web --filter @alterford/indexer typecheck",
