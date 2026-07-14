@@ -1,4 +1,11 @@
-import type { Address, Category, ChallengeState, ModeAffinity } from "@alterford/sdk";
+import type {
+  Address,
+  BountyState,
+  Category,
+  ChallengeState,
+  ModeAffinity,
+  RiskLevel,
+} from "@alterford/sdk";
 import type { AlterfordEvent } from "./events.js";
 import { eventIdentity } from "./events.js";
 
@@ -28,6 +35,7 @@ export interface ChallengeProjection {
   rewardPool: bigint;
   deadline?: bigint;
   state: ChallengeState;
+  riskLevel?: RiskLevel;
   metadataURI?: string;
   rulesHash?: string;
   liveStreamURI?: string;
@@ -39,6 +47,81 @@ export interface ChallengeProjection {
   adminFee?: bigint;
   creatorFee?: bigint;
   lastReasonHash?: string;
+  resolutionProposal?: ChallengeResolutionProposalProjection;
+  resolutionConfirmation?: ChallengeResolutionConfirmationProjection;
+  dispute?: ChallengeDisputeProjection;
+  resolvedEarly?: ChallengeEarlyResolutionProjection;
+}
+
+export interface ChallengeResolutionProposalProjection {
+  proposer: Address;
+  executorSucceeded: boolean;
+  evidenceHash: string;
+  disputeDeadline: bigint;
+}
+
+export interface ChallengeResolutionConfirmationProjection {
+  confirmer: Address;
+  executorSucceeded: boolean;
+}
+
+export interface ChallengeDisputeProjection {
+  disputant: Address;
+  bondAmount: bigint;
+  reasonHash: string;
+  resolved: boolean;
+  disputeSucceeded?: boolean;
+  executorSucceeded?: boolean;
+  resolutionReasonHash?: string;
+}
+
+export interface ChallengeEarlyResolutionProjection {
+  executorSucceeded: boolean;
+  reasonHash: string;
+}
+
+export interface BountySubmissionProjection {
+  submitter: Address;
+  submissionHash: string;
+}
+
+export interface BountyProjection {
+  bountyId: string;
+  creator: Address;
+  settlementToken?: Address;
+  title: string;
+  description: string;
+  rewardPool: bigint;
+  rewardEscrow: bigint;
+  deadline?: bigint;
+  state: BountyState;
+  metadataURI?: string;
+  rulesHash: string;
+  submissions: BountySubmissionProjection[];
+  winners?: Address[];
+  amounts?: bigint[];
+  lastReasonHash?: string;
+  recoveryVault?: Address;
+  recoveredRewardAmount?: bigint;
+  recoveredBondAmount?: bigint;
+  securityAdmin?: Address;
+}
+
+export interface SignedBetProjection {
+  marketId: string;
+  bettor: Address;
+  relayer: Address;
+  outcome: number;
+  amount: bigint;
+  nonce: bigint;
+}
+
+export interface VaultRecoveryProjection {
+  token: Address;
+  coldWallet: Address;
+  amount: bigint;
+  incidentHash: string;
+  securityAdmin: Address;
 }
 
 export interface ReferralProjection {
@@ -105,6 +188,7 @@ export interface FeeProjection {
 export interface ProjectionState {
   processedEventIds: Set<string>;
   markets: Map<string, MarketProjection>;
+  bounties: Map<string, BountyProjection>;
   challenges: Map<string, ChallengeProjection>;
   referrals: Map<Address, ReferralProjection>;
   completedQuests: Map<string, Set<Address>>;
@@ -113,14 +197,20 @@ export interface ProjectionState {
   moderationCases: Map<string, ModerationCaseProjection>;
   bonds: Map<string, BondProjection>;
   bets: Map<string, BetProjection>;
+  signedBets: Map<string, SignedBetProjection>;
+  betNonces: Map<Address, bigint>;
   claims: Map<string, ClaimProjection>;
   fees: Map<string, FeeProjection>;
+  vaultRecoveries: Map<string, VaultRecoveryProjection>;
+  recoveryVault?: Address;
+  standardResolutionWindow?: bigint;
 }
 
 export function createInitialProjectionState(): ProjectionState {
   return {
     processedEventIds: new Set(),
     markets: new Map(),
+    bounties: new Map(),
     challenges: new Map(),
     referrals: new Map(),
     completedQuests: new Map(),
@@ -129,8 +219,11 @@ export function createInitialProjectionState(): ProjectionState {
     moderationCases: new Map(),
     bonds: new Map(),
     bets: new Map(),
+    signedBets: new Map(),
+    betNonces: new Map(),
     claims: new Map(),
     fees: new Map(),
+    vaultRecoveries: new Map(),
   };
 }
 
@@ -185,6 +278,82 @@ export function projectEvent(state: ProjectionState, event: AlterfordEvent): Pro
         type: "Refund",
       });
       break;
+    case "SignedBetExecuted":
+      state.signedBets.set(id, event.payload);
+      state.betNonces.set(event.payload.bettor, event.payload.nonce + 1n);
+      break;
+    case "NonceInvalidated":
+      state.betNonces.set(event.payload.bettor, event.payload.newNonce);
+      break;
+    case "BountyCreated":
+      state.bounties.set(event.payload.bountyId, {
+        bountyId: event.payload.bountyId,
+        creator: event.payload.creator,
+        settlementToken: event.payload.settlementToken,
+        title: `Bounty ${event.payload.bountyId}`,
+        description: "Bounty creado por usuario en Alterford.",
+        rewardPool: event.payload.rewardPool,
+        rewardEscrow: event.payload.rewardEscrow ?? event.payload.rewardPool,
+        deadline: event.payload.deadline,
+        state: event.payload.state ?? "Open",
+        metadataURI: event.payload.metadataURI,
+        rulesHash: event.payload.rulesHash,
+        submissions: [],
+      });
+      break;
+    case "SubmissionCreated": {
+      const bounty = state.bounties.get(event.payload.bountyId);
+      if (bounty) {
+        const submission = {
+          submitter: event.payload.submitter,
+          submissionHash: event.payload.submissionHash,
+        };
+        const existingIndex = bounty.submissions.findIndex(
+          (entry) => entry.submitter.toLowerCase() === event.payload.submitter.toLowerCase(),
+        );
+        if (existingIndex >= 0) bounty.submissions[existingIndex] = submission;
+        else bounty.submissions.push(submission);
+      }
+      break;
+    }
+    case "BountyResolved": {
+      const bounty = state.bounties.get(event.payload.bountyId);
+      if (bounty) {
+        bounty.state = "Resolved";
+        bounty.rewardEscrow = 0n;
+        bounty.winners = event.payload.winners;
+        bounty.amounts = event.payload.amounts;
+      }
+      break;
+    }
+    case "BountyCancelled": {
+      const bounty = state.bounties.get(event.payload.bountyId);
+      if (bounty) {
+        bounty.state = "Cancelled";
+        bounty.rewardEscrow = 0n;
+        bounty.lastReasonHash = event.payload.reasonHash;
+      }
+      break;
+    }
+    case "RecoveryVaultUpdated":
+      state.recoveryVault = event.payload.newVault;
+      break;
+    case "EmergencyBountyRecovered": {
+      const bounty = state.bounties.get(event.payload.bountyId);
+      if (bounty) {
+        bounty.state = "EmergencyRecovered";
+        bounty.rewardEscrow = 0n;
+        bounty.recoveryVault = event.payload.recoveryVault;
+        bounty.recoveredRewardAmount = event.payload.rewardAmount;
+        bounty.recoveredBondAmount = event.payload.bondAmount;
+        bounty.lastReasonHash = event.payload.incidentHash;
+        bounty.securityAdmin = event.payload.securityAdmin;
+      }
+      break;
+    }
+    case "EmergencyLiquidityRecovered":
+      state.vaultRecoveries.set(id, event.payload);
+      break;
     case "ChallengeCreated":
       state.challenges.set(event.payload.challengeId, {
         challengeId: event.payload.challengeId,
@@ -195,6 +364,7 @@ export function projectEvent(state: ProjectionState, event: AlterfordEvent): Pro
         rewardPool: event.payload.rewardPool,
         deadline: event.payload.deadline,
         state: event.payload.state ?? "Open",
+        riskLevel: event.payload.riskLevel,
         metadataURI: event.payload.metadataURI,
         rulesHash: event.payload.rulesHash,
       });
@@ -247,6 +417,70 @@ export function projectEvent(state: ProjectionState, event: AlterfordEvent): Pro
       const challenge = state.challenges.get(event.payload.challengeId);
       if (challenge) {
         challenge.state = "Fraud";
+        challenge.lastReasonHash = event.payload.reasonHash;
+      }
+      break;
+    }
+    case "ResolutionWindowUpdated":
+      state.standardResolutionWindow = event.payload.newWindow;
+      break;
+    case "ChallengeResolutionProposed": {
+      const challenge = state.challenges.get(event.payload.challengeId);
+      if (challenge) {
+        challenge.state = "Review";
+        challenge.resolutionProposal = {
+          proposer: event.payload.proposer,
+          executorSucceeded: event.payload.executorSucceeded,
+          evidenceHash: event.payload.evidenceHash,
+          disputeDeadline: event.payload.disputeDeadline,
+        };
+      }
+      break;
+    }
+    case "ChallengeResolutionConfirmed": {
+      const challenge = state.challenges.get(event.payload.challengeId);
+      if (challenge) {
+        challenge.resolutionConfirmation = {
+          confirmer: event.payload.confirmer,
+          executorSucceeded: event.payload.executorSucceeded,
+        };
+      }
+      break;
+    }
+    case "ChallengeResolutionDisputed": {
+      const challenge = state.challenges.get(event.payload.challengeId);
+      if (challenge) {
+        challenge.state = "Disputed";
+        challenge.dispute = {
+          disputant: event.payload.disputant,
+          bondAmount: event.payload.bondAmount,
+          reasonHash: event.payload.reasonHash,
+          resolved: false,
+        };
+      }
+      break;
+    }
+    case "ChallengeDisputeResolved": {
+      const challenge = state.challenges.get(event.payload.challengeId);
+      if (challenge?.dispute) {
+        challenge.dispute = {
+          ...challenge.dispute,
+          resolved: true,
+          disputeSucceeded: event.payload.disputeSucceeded,
+          executorSucceeded: event.payload.executorSucceeded,
+          resolutionReasonHash: event.payload.reasonHash,
+        };
+        challenge.lastReasonHash = event.payload.reasonHash;
+      }
+      break;
+    }
+    case "ChallengeResolvedEarly": {
+      const challenge = state.challenges.get(event.payload.challengeId);
+      if (challenge) {
+        challenge.resolvedEarly = {
+          executorSucceeded: event.payload.executorSucceeded,
+          reasonHash: event.payload.reasonHash,
+        };
         challenge.lastReasonHash = event.payload.reasonHash;
       }
       break;

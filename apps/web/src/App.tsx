@@ -112,6 +112,7 @@ export function App() {
   const [challengeLiveUrl, setChallengeLiveUrl] = useState("");
   const [challengeActionId, setChallengeActionId] = useState("1");
   const [challengeEvidenceUrl, setChallengeEvidenceUrl] = useState("");
+  const [challengeDisputeReason, setChallengeDisputeReason] = useState("");
   const [challengeDeadline, setChallengeDeadline] = useState(1440);
   const {
     isUnderworldMode,
@@ -134,7 +135,7 @@ export function App() {
     policy: DEFAULT_BOND_POLICY,
   });
   const challengeStakeAmount = parseUsdtInput(challengeStake);
-  const challengeRiskLevel = isUnsafeChallenge(challengeTitle, challengeEvidence) ? "Critical" : "High";
+  const challengeRiskLevel = isUnsafeChallenge(challengeTitle, challengeEvidence) ? "Critical" : "Medium";
   const challengeBondEstimate = calculateCreationBond({
     entityType: "Challenge",
     mode: "Underworld",
@@ -289,6 +290,7 @@ export function App() {
           liveUrl={challengeLiveUrl}
           actionId={challengeActionId}
           evidenceUrl={challengeEvidenceUrl}
+          disputeReason={challengeDisputeReason}
           deadline={challengeDeadline}
           bondAmountLabel={challengeBondAmountLabel}
           totalRequiredLabel={challengeTotalRequiredLabel}
@@ -303,9 +305,12 @@ export function App() {
           onLiveUrl={setChallengeLiveUrl}
           onActionId={setChallengeActionId}
           onEvidenceUrl={setChallengeEvidenceUrl}
+          onDisputeReason={setChallengeDisputeReason}
           onDeadline={setChallengeDeadline}
           onAddFunds={web3.mintTestTokens}
           onApprove={web3.approveChallengeSettlement}
+          onApproveExecutor={() => web3.approveChallengeExecutorBond()}
+          onApproveDispute={() => web3.approveChallengeDispute({ challengeId: challengeActionId })}
           onCreate={() =>
             web3.createChallenge({
               title: challengeTitle,
@@ -323,6 +328,31 @@ export function App() {
               challengeId: challengeActionId,
               liveStreamURI: challengeLiveUrl,
               evidenceURI: challengeEvidenceUrl,
+            })
+          }
+          onPropose={(executorSucceeded) =>
+            web3.proposeChallengeResolution({
+              challengeId: challengeActionId,
+              executorSucceeded,
+              evidenceURI: challengeEvidenceUrl,
+              liveStreamURI: challengeLiveUrl,
+            })
+          }
+          onConfirm={(executorSucceeded) =>
+            web3.confirmChallengeResolution({ challengeId: challengeActionId, executorSucceeded })
+          }
+          onDispute={() =>
+            web3.disputeChallengeResolution({
+              challengeId: challengeActionId,
+              reason: challengeDisputeReason,
+            })
+          }
+          onFinalize={() => web3.finalizeUndisputedChallenge({ challengeId: challengeActionId })}
+          onResolveDispute={(executorSucceeded) =>
+            web3.resolveChallengeDispute({
+              challengeId: challengeActionId,
+              executorSucceeded,
+              reason: challengeDisputeReason,
             })
           }
         />
@@ -622,6 +652,7 @@ function ChallengesView({
   liveUrl,
   actionId,
   evidenceUrl,
+  disputeReason,
   deadline,
   bondAmountLabel,
   totalRequiredLabel,
@@ -636,13 +667,21 @@ function ChallengesView({
   onLiveUrl,
   onActionId,
   onEvidenceUrl,
+  onDisputeReason,
   onDeadline,
   onAddFunds,
   onApprove,
+  onApproveExecutor,
+  onApproveDispute,
   onCreate,
   onAccept,
   onUpdateLive,
   onSubmitEvidence,
+  onPropose,
+  onConfirm,
+  onDispute,
+  onFinalize,
+  onResolveDispute,
 }: {
   title: string;
   indexedChallenges: ChallengeDTO[];
@@ -652,6 +691,7 @@ function ChallengesView({
   liveUrl: string;
   actionId: string;
   evidenceUrl: string;
+  disputeReason: string;
   deadline: number;
   bondAmountLabel: string;
   totalRequiredLabel: string;
@@ -666,13 +706,21 @@ function ChallengesView({
   onLiveUrl: (value: string) => void;
   onActionId: (value: string) => void;
   onEvidenceUrl: (value: string) => void;
+  onDisputeReason: (value: string) => void;
   onDeadline: (value: number) => void;
   onAddFunds: () => void;
   onApprove: () => void;
+  onApproveExecutor: () => void;
+  onApproveDispute: () => void;
   onCreate: () => void;
   onAccept: () => void;
   onUpdateLive: () => void;
   onSubmitEvidence: () => void;
+  onPropose: (executorSucceeded: boolean) => void;
+  onConfirm: (executorSucceeded: boolean) => void;
+  onDispute: () => void;
+  onFinalize: () => void;
+  onResolveDispute: (executorSucceeded: boolean) => void;
 }) {
   return (
     <section className="challenge-layout">
@@ -745,7 +793,13 @@ function ChallengesView({
           </label>
           <label>
             Deadline en minutos
-            <input type="number" min={30} value={deadline} onChange={(event) => onDeadline(Number(event.target.value))} />
+            <input
+              type="number"
+              min={30}
+              max={Number(stake) >= 1000 ? 2880 : 1440}
+              value={deadline}
+              onChange={(event) => onDeadline(Number(event.target.value))}
+            />
           </label>
         </div>
         <label>
@@ -824,9 +878,43 @@ function ChallengesView({
             </label>
           </div>
           <div className="action-grid">
+            <button onClick={onApproveExecutor} disabled={!actionId.trim()}>Autorizar bond ejecutor</button>
             <button onClick={onAccept} disabled={!actionId.trim()}>Aceptar reto</button>
             <button onClick={onUpdateLive} disabled={!actionId.trim() || !liveUrl.trim()}>Actualizar live</button>
             <button onClick={onSubmitEvidence} disabled={!actionId.trim() || !evidenceUrl.trim()}>Enviar evidencia</button>
+          </div>
+          <div className="section-title compact">
+            <div>
+              <p className="eyebrow">Resolucion optimista</p>
+              <h3>Acuerdo, disputa o arbitraje</h3>
+            </div>
+          </div>
+          <p className="help-text">
+            Una parte propone el resultado. La otra puede confirmarlo para cerrar antes, o abrir
+            una disputa con bond reembolsable si el arbitro le da la razon.
+          </p>
+          <label>
+            Motivo de disputa o arbitraje
+            <input
+              value={disputeReason}
+              onChange={(event) => onDisputeReason(event.target.value)}
+              placeholder="Describe el desacuerdo y referencia la evidencia"
+            />
+          </label>
+          <div className="action-grid">
+            <button onClick={() => onPropose(true)} disabled={!actionId.trim()}>Proponer: cumplido</button>
+            <button onClick={() => onPropose(false)} disabled={!actionId.trim()}>Proponer: no cumplido</button>
+            <button onClick={() => onConfirm(true)} disabled={!actionId.trim()}>Confirmar: cumplido</button>
+            <button onClick={() => onConfirm(false)} disabled={!actionId.trim()}>Confirmar: no cumplido</button>
+            <button onClick={onApproveDispute} disabled={!actionId.trim()}>Autorizar bond de disputa</button>
+            <button onClick={onDispute} disabled={!actionId.trim() || !disputeReason.trim()}>Abrir disputa</button>
+            <button onClick={onFinalize} disabled={!actionId.trim()}>Finalizar sin disputa</button>
+            <button onClick={() => onResolveDispute(true)} disabled={!actionId.trim() || !disputeReason.trim()}>
+              Arbitro: cumplido
+            </button>
+            <button onClick={() => onResolveDispute(false)} disabled={!actionId.trim() || !disputeReason.trim()}>
+              Arbitro: no cumplido
+            </button>
           </div>
         </div>
         <TxState tx={tx} />

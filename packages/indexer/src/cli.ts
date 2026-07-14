@@ -8,7 +8,9 @@ import { loadIndexerState, replayPersistedJournal, snapshotIndexerState } from "
 const chainId = Number(process.env.CHAIN_ID || "31337");
 const rpcUrl = process.env.RPC_URL || "http://127.0.0.1:8545";
 const marketFactory = process.env.MARKET_FACTORY_ADDRESS as Address | undefined;
+const bountyFactory = process.env.BOUNTY_FACTORY_ADDRESS as Address | undefined;
 const challengeFactory = process.env.CHALLENGE_FACTORY_ADDRESS as Address | undefined;
+const bountyRecoveryVault = process.env.BOUNTY_RECOVERY_VAULT_ADDRESS as Address | undefined;
 const commandRoot = process.env.INIT_CWD || process.cwd();
 const storePath = process.env.INDEXER_STORE
   ? resolve(commandRoot, process.env.INDEXER_STORE)
@@ -46,7 +48,9 @@ async function tick() {
       rpcUrl,
       chainId,
       marketFactory: requiredMarketFactory,
+      bountyFactory,
       challengeFactory,
+      bountyRecoveryVault,
       storePath,
       confirmations,
     });

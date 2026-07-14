@@ -1,10 +1,15 @@
-import type { ChallengeProjection, MarketProjection } from "./projections.js";
+import type { BountyProjection, ChallengeProjection, MarketProjection } from "./projections.js";
 import type { ProjectionState } from "./projections.js";
 import type { Category, ModeAffinity } from "@alterford/sdk";
 
 export function createReadApi(state: ProjectionState) {
   return {
     listMarkets: () => [...state.markets.values()].map(enrichMarketMetadata),
+    listBounties: () => [...state.bounties.values()].map(enrichBountyMetadata),
+    getBounty: (bountyId: string) => {
+      const bounty = state.bounties.get(bountyId);
+      return bounty ? enrichBountyMetadata(bounty) : null;
+    },
     listChallenges: () => [...state.challenges.values()].map(enrichChallengeMetadata),
     getChallenge: (challengeId: string) => {
       const challenge = state.challenges.get(challengeId);
@@ -14,16 +19,38 @@ export function createReadApi(state: ProjectionState) {
       const market = state.markets.get(marketId);
       return market ? enrichMarketMetadata(market) : null;
     },
-    listBets: (marketId?: string) =>
-      [...state.bets.values()].filter((bet) => !marketId || bet.marketId === marketId),
-    listClaims: (marketId?: string) =>
-      [...state.claims.values()].filter((claim) => !marketId || claim.marketId === marketId),
+    listBets: (marketId?: string, user?: string) =>
+      [...state.bets.values()].filter(
+        (bet) =>
+          (!marketId || bet.marketId === marketId) &&
+          (!user || bet.user.toLowerCase() === user.toLowerCase()),
+      ),
+    listClaims: (marketId?: string, user?: string) =>
+      [...state.claims.values()].filter(
+        (claim) =>
+          (!marketId || claim.marketId === marketId) &&
+          (!user || claim.user.toLowerCase() === user.toLowerCase()),
+      ),
     getFees: (marketId: string) => state.fees.get(marketId) ?? null,
     getReferral: (user: string) => state.referrals.get(user as `0x${string}`) ?? null,
     getOracleResult: (marketId: string) => state.oracleResults.get(marketId) ?? null,
     listModerationCases: () => [...state.moderationCases.values()],
     getBond: (entityType: string, entityId: string) => state.bonds.get(`${entityType}:${entityId}`) ?? null,
   };
+}
+
+function enrichBountyMetadata(bounty: BountyProjection): BountyProjection {
+  if (!bounty.metadataURI?.startsWith("alterford://bounty?")) return bounty;
+  try {
+    const url = new URL(bounty.metadataURI);
+    return {
+      ...bounty,
+      title: url.searchParams.get("title")?.trim() || bounty.title,
+      description: url.searchParams.get("description")?.trim() || bounty.description,
+    };
+  } catch {
+    return bounty;
+  }
 }
 
 function enrichMarketMetadata(market: MarketProjection): MarketProjection {

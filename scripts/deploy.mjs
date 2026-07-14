@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createPublicClient, createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { deploymentRpcUrl } from "./deploy-config.mjs";
 
 const args = new Set(process.argv.slice(2));
 const chainName = args.has("--chain") ? process.argv[process.argv.indexOf("--chain") + 1] : "local";
@@ -23,6 +24,10 @@ const chainConfig = {
     accountName: process.env.FOUNDRY_ACCOUNT || process.env.ETH_KEYSTORE_ACCOUNT,
     passwordFile: process.env.FOUNDRY_PASSWORD_FILE || process.env.ETH_PASSWORD,
     deployerAddress: process.env.DEPLOYER_ADDRESS,
+    settlementTokenAddress: process.env.SETTLEMENT_TOKEN_ADDRESS,
+    creationBondPolicyAddress: process.env.CREATION_BOND_POLICY_ADDRESS,
+    securityCouncil: process.env.SECURITY_COUNCIL_ADDRESS,
+    coldWallet: process.env.COLD_WALLET_ADDRESS,
   },
 }[chainName];
 
@@ -30,25 +35,29 @@ if (!chainConfig) {
   throw new Error(`Unknown chain "${chainName}". Use local or base-sepolia.`);
 }
 
+let account;
+let publicClient;
+let walletClient;
+
 if (chainName === "base-sepolia") {
   await deployWithFoundryKeystore();
-  process.exit();
+} else {
+  if (!chainConfig.privateKey) {
+    throw new Error("A local Anvil private key is required for this deployment target.");
+  }
+
+  const chain = {
+    id: chainConfig.id,
+    name: chainConfig.name,
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+    rpcUrls: { default: { http: [chainConfig.rpcUrl] } },
+  };
+
+  account = privateKeyToAccount(chainConfig.privateKey);
+  publicClient = createPublicClient({ chain, transport: http(chainConfig.rpcUrl) });
+  walletClient = createWalletClient({ account, chain, transport: http(chainConfig.rpcUrl) });
+  await main();
 }
-
-if (!chainConfig.privateKey) {
-  throw new Error("A local Anvil private key is required for this deployment target.");
-}
-
-const chain = {
-  id: chainConfig.id,
-  name: chainConfig.name,
-  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-  rpcUrls: { default: { http: [chainConfig.rpcUrl] } },
-};
-
-const account = privateKeyToAccount(chainConfig.privateKey);
-const publicClient = createPublicClient({ chain, transport: http(chainConfig.rpcUrl) });
-const walletClient = createWalletClient({ account, chain, transport: http(chainConfig.rpcUrl) });
 
 async function main() {
   const networkChainId = await publicClient.getChainId();
@@ -61,12 +70,23 @@ async function main() {
   const marketFactory = await deploy("MarketFactory", [account.address, creationBondPolicy.address]);
   const bountyFactory = await deploy("BountyFactory", [account.address, creationBondPolicy.address]);
   const challengeFactory = await deploy("ChallengeFactory", [account.address, creationBondPolicy.address]);
+  const bountyRecoveryVault = await deploy("BountyRecoveryVault", [account.address, account.address]);
+  const setVaultHash = await walletClient.writeContract({
+    account,
+    address: bountyFactory.address,
+    abi: (await readArtifact("BountyFactory")).abi,
+    functionName: "setRecoveryVault",
+    args: [bountyRecoveryVault.address],
+  });
+  await publicClient.waitForTransactionReceipt({ hash: setVaultHash });
 
   const deployment = {
     chainId: chainConfig.id,
     chainName: chainConfig.name,
-    rpcUrl: chainConfig.rpcUrl,
+    rpcUrl: deploymentRpcUrl(chainConfig.id, chainConfig.rpcUrl),
     deployer: account.address,
+    securityCouncil: account.address,
+    coldWallet: account.address,
     deployedAt: new Date().toISOString(),
     startBlock: minBlockNumber([
       settlementToken,
@@ -74,6 +94,7 @@ async function main() {
       marketFactory,
       bountyFactory,
       challengeFactory,
+      bountyRecoveryVault,
     ]),
     contracts: {
       settlementToken,
@@ -81,6 +102,7 @@ async function main() {
       marketFactory,
       bountyFactory,
       challengeFactory,
+      bountyRecoveryVault,
     },
   };
 
@@ -124,11 +146,6 @@ async function readArtifact(contractName) {
   return JSON.parse(await readFile(artifactPath, "utf8"));
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
-
 async function deployWithFoundryKeystore() {
   if (!chainConfig.accountName) {
     throw new Error("FOUNDRY_ACCOUNT or ETH_KEYSTORE_ACCOUNT is required for Base Sepolia deploy.");
@@ -152,13 +169,37 @@ async function deployWithFoundryKeystore() {
     throw new Error(`RPC chain mismatch. Expected ${chainConfig.id}, got ${networkChainId}.`);
   }
 
-  const deployer = chainConfig.deployerAddress || getKeystoreAddress(chainConfig);
+  const keystoreDeployer = getKeystoreAddress(chainConfig);
+  if (
+    chainConfig.deployerAddress
+      && keystoreDeployer.toLowerCase() !== chainConfig.deployerAddress.toLowerCase()
+  ) throw new Error("DEPLOYER_ADDRESS does not match the selected Foundry keystore account.");
+  const deployer = keystoreDeployer;
+  const previousDeployment = await readOptionalDeployment(chainConfig.id);
+  const settlementTokenAddress =
+    chainConfig.settlementTokenAddress
+    || previousDeployment?.contracts?.settlementToken?.address;
+  const creationBondPolicyAddress =
+    chainConfig.creationBondPolicyAddress
+    || previousDeployment?.contracts?.creationBondPolicy?.address;
+  if (!settlementTokenAddress || !creationBondPolicyAddress) {
+    throw new Error(
+      "SETTLEMENT_TOKEN_ADDRESS and CREATION_BOND_POLICY_ADDRESS are required when no previous Base Sepolia deployment exists.",
+    );
+  }
+  if (!chainConfig.securityCouncil || !chainConfig.coldWallet) {
+    throw new Error("SECURITY_COUNCIL_ADDRESS and COLD_WALLET_ADDRESS are required for Base Sepolia.");
+  }
   const forgeArgs = [
     "script",
     "script/DeployAlterford.s.sol:DeployAlterford",
     "--sig",
-    "run(address)",
+    "run(address,address,address,address,address)",
     deployer,
+    settlementTokenAddress,
+    creationBondPolicyAddress,
+    chainConfig.securityCouncil,
+    chainConfig.coldWallet,
     "--rpc-url",
     chainConfig.rpcUrl,
     "--chain-id",
@@ -182,14 +223,30 @@ async function deployWithFoundryKeystore() {
     },
     transport: http(chainConfig.rpcUrl),
   });
-  const contracts = await readFoundryBroadcast(chainConfig.id, client);
+  const contracts = await readFoundryBroadcast(chainConfig.id, client, {
+    settlementToken: previousDeployment?.contracts?.settlementToken ?? {
+      address: settlementTokenAddress,
+      artifact: "MockSettlementToken.sol/MockSettlementToken.json",
+    },
+    creationBondPolicy: previousDeployment?.contracts?.creationBondPolicy ?? {
+      address: creationBondPolicyAddress,
+      artifact: "CreationBondPolicy.sol/CreationBondPolicy.json",
+    },
+  });
   const deployment = {
     chainId: chainConfig.id,
     chainName: chainConfig.name,
-    rpcUrl: chainConfig.rpcUrl,
+    rpcUrl: deploymentRpcUrl(chainConfig.id, chainConfig.rpcUrl),
     deployer,
+    securityCouncil: chainConfig.securityCouncil,
+    coldWallet: chainConfig.coldWallet,
     deployedAt: new Date().toISOString(),
-    startBlock: minBlockNumber(Object.values(contracts)),
+    startBlock: minBlockNumber([
+      contracts.marketFactory,
+      contracts.bountyFactory,
+      contracts.challengeFactory,
+      contracts.bountyRecoveryVault,
+    ]),
     contracts,
   };
 
@@ -210,7 +267,7 @@ function getKeystoreAddress(config) {
   return result.stdout.trim();
 }
 
-async function readFoundryBroadcast(chainId, client) {
+async function readFoundryBroadcast(chainId, client, reusedContracts = {}) {
   const broadcast = JSON.parse(
     await readFile(
       resolve("packages", "contracts", "broadcast", "DeployAlterford.s.sol", String(chainId), "run-latest.json"),
@@ -227,9 +284,10 @@ async function readFoundryBroadcast(chainId, client) {
     ["marketFactory", "MarketFactory"],
     ["bountyFactory", "BountyFactory"],
     ["challengeFactory", "ChallengeFactory"],
+    ["bountyRecoveryVault", "BountyRecoveryVault"],
   ];
-  return Object.fromEntries(
-    await Promise.all(required.map(async ([key, contractName]) => {
+  const deployed = Object.fromEntries(
+    await Promise.all(required.slice(2).map(async ([key, contractName]) => {
       const tx = byName.get(contractName);
       if (!tx) throw new Error(`Missing ${contractName} in Foundry broadcast output.`);
       const txHash = tx.hash ?? tx.transactionHash;
@@ -245,6 +303,15 @@ async function readFoundryBroadcast(chainId, client) {
       ];
     })),
   );
+  return { ...reusedContracts, ...deployed };
+}
+
+async function readOptionalDeployment(chainId) {
+  try {
+    return JSON.parse(await readFile(resolve("deployments", `${chainId}.json`), "utf8"));
+  } catch {
+    return null;
+  }
 }
 
 function minBlockNumber(contracts) {

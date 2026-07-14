@@ -8,8 +8,10 @@ import { AlterfordErrors } from "../libraries/AlterfordErrors.sol";
 import { FeePolicy } from "../libraries/FeePolicy.sol";
 import { CreationBondPolicy } from "../bonds/CreationBondPolicy.sol";
 import { IERC20 } from "../token/IERC20.sol";
+import { EIP712 } from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import { SignatureChecker } from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 
-contract MarketFactory is Governed, ReentrancyGuardLite {
+contract MarketFactory is Governed, ReentrancyGuardLite, EIP712 {
     struct Market {
         address creator;
         address settlementToken;
@@ -22,6 +24,20 @@ contract MarketFactory is Governed, ReentrancyGuardLite {
         uint8 winningOutcome;
         string[] outcomes;
     }
+
+    struct BetAuthorization {
+        address bettor;
+        uint256 marketId;
+        uint8 outcome;
+        uint256 amount;
+        uint256 nonce;
+        uint256 deadline;
+        address authorizedRelayer;
+    }
+
+    bytes32 public constant BET_AUTHORIZATION_TYPEHASH = keccak256(
+        "BetAuthorization(address bettor,uint256 marketId,uint8 outcome,uint256 amount,uint256 nonce,uint256 deadline,address authorizedRelayer)"
+    );
 
     uint256 public nextMarketId = 1;
     CreationBondPolicy public bondPolicy;
@@ -40,6 +56,7 @@ contract MarketFactory is Governed, ReentrancyGuardLite {
     mapping(uint256 => uint256) public claimedWinningStakeByMarket;
     mapping(uint256 => uint256) public bondByMarket;
     mapping(uint256 => bool) public bondFinalized;
+    mapping(address => uint256) public nonces;
 
     event MarketCreated(
         uint256 indexed marketId,
@@ -87,9 +104,23 @@ contract MarketFactory is Governed, ReentrancyGuardLite {
     event BondSlashed(
         bytes32 indexed entityType, uint256 indexed entityId, uint256 amount, bytes32 reasonHash
     );
+    event SignedBetExecuted(
+        uint256 indexed marketId,
+        address indexed bettor,
+        address indexed relayer,
+        uint8 outcome,
+        uint256 amount,
+        uint256 nonce
+    );
+    event NonceInvalidated(address indexed bettor, uint256 oldNonce, uint256 newNonce);
 
-    constructor(address initialAdmin, address initialBondPolicy) Governed(initialAdmin) {
-        if (initialBondPolicy == address(0)) revert AlterfordErrors.InvalidBondPolicy();
+    constructor(address initialAdmin, address initialBondPolicy)
+        Governed(initialAdmin)
+        EIP712("AlterfordMarketFactory", "1")
+    {
+        if (initialBondPolicy == address(0)) {
+            revert AlterfordErrors.InvalidBondPolicy();
+        }
         bondPolicy = CreationBondPolicy(initialBondPolicy);
         emit BondPolicyUpdated(address(0), initialBondPolicy);
     }
@@ -172,6 +203,85 @@ contract MarketFactory is Governed, ReentrancyGuardLite {
             revert AlterfordErrors.TransferFailed();
         }
         emit BetPlaced(marketId, msg.sender, outcome, amount);
+    }
+
+    function placeBetBySig(BetAuthorization calldata authorization, bytes calldata signature)
+        external
+        nonReentrant
+        whenNotPaused
+    {
+        if (authorization.bettor == address(0)) revert AlterfordErrors.InvalidSignature();
+        if (block.timestamp > authorization.deadline) revert AlterfordErrors.SignatureExpired();
+        if (
+            authorization.authorizedRelayer != address(0)
+                && authorization.authorizedRelayer != msg.sender
+        ) revert AlterfordErrors.InvalidRelayer();
+
+        uint256 expectedNonce = nonces[authorization.bettor];
+        if (authorization.nonce != expectedNonce) revert AlterfordErrors.InvalidNonce();
+        bytes32 digest = hashBetAuthorization(authorization);
+        if (!SignatureChecker.isValidSignatureNow(authorization.bettor, digest, signature)) {
+            revert AlterfordErrors.InvalidSignature();
+        }
+
+        nonces[authorization.bettor] = expectedNonce + 1;
+        Market storage market = markets[authorization.marketId];
+        _recordBet(
+            authorization.marketId,
+            authorization.bettor,
+            authorization.outcome,
+            authorization.amount
+        );
+        // The EIP-712 authorization binds bettor, amount, market, nonce, deadline and relayer.
+        // slither-disable-next-line arbitrary-send-erc20
+        if (!IERC20(market.settlementToken)
+                .transferFrom(authorization.bettor, address(this), authorization.amount)) revert AlterfordErrors.TransferFailed();
+
+        emit BetPlaced(
+            authorization.marketId,
+            authorization.bettor,
+            authorization.outcome,
+            authorization.amount
+        );
+        emit SignedBetExecuted(
+            authorization.marketId,
+            authorization.bettor,
+            msg.sender,
+            authorization.outcome,
+            authorization.amount,
+            authorization.nonce
+        );
+    }
+
+    function invalidateNonce(uint256 newNonce) external {
+        uint256 oldNonce = nonces[msg.sender];
+        if (newNonce <= oldNonce) revert AlterfordErrors.InvalidNonce();
+        nonces[msg.sender] = newNonce;
+        emit NonceInvalidated(msg.sender, oldNonce, newNonce);
+    }
+
+    function hashBetAuthorization(BetAuthorization memory authorization)
+        public
+        view
+        returns (bytes32)
+    {
+        bytes32 structHash = keccak256(
+            abi.encode(
+                BET_AUTHORIZATION_TYPEHASH,
+                authorization.bettor,
+                authorization.marketId,
+                authorization.outcome,
+                authorization.amount,
+                authorization.nonce,
+                authorization.deadline,
+                authorization.authorizedRelayer
+            )
+        );
+        return _hashTypedDataV4(structHash);
+    }
+
+    function domainSeparatorV4() external view returns (bytes32) {
+        return _domainSeparatorV4();
     }
 
     function lockMarket(uint256 marketId) external {

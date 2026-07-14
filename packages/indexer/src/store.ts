@@ -4,10 +4,13 @@ import type { AlterfordEvent } from "./events.js";
 import type {
   BetProjection,
   BondProjection,
+  BountyProjection,
   ChallengeProjection,
   ClaimProjection,
   FeeProjection,
   ProjectionState,
+  SignedBetProjection,
+  VaultRecoveryProjection,
 } from "./projections.js";
 import { createInitialProjectionState } from "./projections.js";
 import type { BlockCheckpoint } from "./reorg.js";
@@ -36,6 +39,7 @@ export interface IndexerSnapshot {
   blockCheckpointCount: number;
     readModel: {
       markets: number;
+      bounties: number;
       challenges: number;
       bets: number;
     claims: number;
@@ -85,6 +89,7 @@ export function snapshotIndexerState(state: PersistedIndexerState): IndexerSnaps
     blockCheckpointCount: state.blockCheckpoints.size,
     readModel: {
       markets: state.projection.markets.size,
+      bounties: state.projection.bounties.size,
       challenges: state.projection.challenges.size,
       bets: state.projection.bets.size,
       claims: state.projection.claims.size,
@@ -110,6 +115,7 @@ function serializeIndexerState(state: PersistedIndexerState) {
           poolByOutcome: [...market.poolByOutcome],
         },
       ]),
+      bounties: [...state.projection.bounties],
       challenges: [...state.projection.challenges],
       referrals: [...state.projection.referrals],
       completedQuests: [...state.projection.completedQuests].map(([questId, users]) => [questId, [...users]]),
@@ -118,8 +124,13 @@ function serializeIndexerState(state: PersistedIndexerState) {
       moderationCases: [...state.projection.moderationCases],
       bonds: [...state.projection.bonds],
       bets: [...state.projection.bets],
+      signedBets: [...state.projection.signedBets],
+      betNonces: [...state.projection.betNonces],
       claims: [...state.projection.claims],
       fees: [...state.projection.fees],
+      vaultRecoveries: [...state.projection.vaultRecoveries],
+      recoveryVault: state.projection.recoveryVault,
+      standardResolutionWindow: state.projection.standardResolutionWindow,
     },
   };
 }
@@ -146,13 +157,8 @@ function deserializeProjection(raw: any): ProjectionState {
       },
     ]),
   );
-  state.challenges = mapBigints<ChallengeProjection>(raw?.challenges ?? [], [
-    "rewardPool",
-    "deadline",
-    "rewardPayout",
-    "adminFee",
-    "creatorFee",
-  ]);
+  state.challenges = deserializeChallenges(raw?.challenges ?? []);
+  state.bounties = deserializeBounties(raw?.bounties ?? []);
   state.referrals = new Map(raw?.referrals ?? []);
   state.completedQuests = new Map(
     (raw?.completedQuests ?? []).map(([questId, users]: [string, `0x${string}`[]]) => [questId, new Set(users)]),
@@ -167,9 +173,61 @@ function deserializeProjection(raw: any): ProjectionState {
     "slashedBond",
   ]);
   state.bets = mapBigints<BetProjection>(raw?.bets ?? [], ["amount"]);
+  state.signedBets = mapBigints<SignedBetProjection>(raw?.signedBets ?? [], ["amount", "nonce"]);
+  state.betNonces = new Map(
+    (raw?.betNonces ?? []).map(([address, nonce]: [string, string]) => [address, BigInt(nonce)]),
+  );
   state.claims = mapBigints<ClaimProjection>(raw?.claims ?? [], ["amount"]);
   state.fees = mapBigints<FeeProjection>(raw?.fees ?? [], ["adminFee", "creatorFee"]);
+  state.vaultRecoveries = mapBigints<VaultRecoveryProjection>(raw?.vaultRecoveries ?? [], ["amount"]);
+  state.recoveryVault = raw?.recoveryVault;
+  state.standardResolutionWindow =
+    raw?.standardResolutionWindow === undefined ? undefined : BigInt(raw.standardResolutionWindow);
   return state;
+}
+
+function deserializeBounties(entries: [string, BountyProjection][]): Map<string, BountyProjection> {
+  return new Map(
+    entries.map(([key, value]: [string, any]) => [
+      key,
+      {
+        ...value,
+        rewardPool: BigInt(value.rewardPool ?? 0),
+        rewardEscrow: BigInt(value.rewardEscrow ?? 0),
+        deadline: value.deadline === undefined ? undefined : BigInt(value.deadline),
+        amounts: value.amounts?.map((amount: string) => BigInt(amount)),
+        recoveredRewardAmount:
+          value.recoveredRewardAmount === undefined ? undefined : BigInt(value.recoveredRewardAmount),
+        recoveredBondAmount:
+          value.recoveredBondAmount === undefined ? undefined : BigInt(value.recoveredBondAmount),
+      },
+    ]),
+  );
+}
+
+function deserializeChallenges(entries: [string, ChallengeProjection][]): Map<string, ChallengeProjection> {
+  return new Map(
+    entries.map(([key, value]: [string, any]) => [
+      key,
+      {
+        ...value,
+        rewardPool: BigInt(value.rewardPool ?? 0),
+        deadline: value.deadline === undefined ? undefined : BigInt(value.deadline),
+        rewardPayout: value.rewardPayout === undefined ? undefined : BigInt(value.rewardPayout),
+        adminFee: value.adminFee === undefined ? undefined : BigInt(value.adminFee),
+        creatorFee: value.creatorFee === undefined ? undefined : BigInt(value.creatorFee),
+        resolutionProposal: value.resolutionProposal
+          ? {
+              ...value.resolutionProposal,
+              disputeDeadline: BigInt(value.resolutionProposal.disputeDeadline),
+            }
+          : undefined,
+        dispute: value.dispute
+          ? { ...value.dispute, bondAmount: BigInt(value.dispute.bondAmount) }
+          : undefined,
+      },
+    ]),
+  );
 }
 
 function mapBigints<T>(entries: [string, T][], keys: string[]): Map<string, T> {
@@ -206,9 +264,17 @@ function revivePayloadBigints(type: string, payload: Record<string, unknown>) {
     FeesAccrued: ["adminFee", "creatorFee"],
     RewardClaimed: ["amount"],
     RefundClaimed: ["amount"],
+    SignedBetExecuted: ["amount", "nonce"],
+    NonceInvalidated: ["oldNonce", "newNonce"],
+    BountyCreated: ["rewardPool", "rewardEscrow", "deadline"],
+    EmergencyBountyRecovered: ["rewardAmount", "bondAmount"],
+    EmergencyLiquidityRecovered: ["amount"],
     ChallengeCreated: ["rewardPool", "deadline"],
     ChallengeAccepted: ["executorBond"],
     ChallengeResolved: ["rewardPayout", "adminFee", "creatorFee"],
+    ResolutionWindowUpdated: ["oldWindow", "newWindow"],
+    ChallengeResolutionProposed: ["disputeDeadline"],
+    ChallengeResolutionDisputed: ["bondAmount"],
     BondCalculated: ["requiredBond"],
     BondLocked: ["amount"],
     BondReleased: ["amount"],
@@ -218,7 +284,11 @@ function revivePayloadBigints(type: string, payload: Record<string, unknown>) {
   return Object.fromEntries(
     Object.entries(payload ?? {}).map(([key, value]) => [
       key,
-      bigintFields.includes(key) ? BigInt(String(value)) : value,
+      type === "BountyResolved" && key === "amounts" && Array.isArray(value)
+        ? value.map((amount) => BigInt(String(amount)))
+        : bigintFields.includes(key) && value !== undefined
+          ? BigInt(String(value))
+          : value,
     ]),
   );
 }

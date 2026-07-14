@@ -8,3 +8,9 @@ dist
 .venv*
 data
 coverage
+.codex-remote-attachments
+packages/contracts/lib
+packages/contracts/out
+packages/contracts/cache
+packages/contracts/broadcast
+*.log

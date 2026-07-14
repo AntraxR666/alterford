@@ -18,7 +18,8 @@ export type BountyState =
   | "Cancelled"
   | "Fraud"
   | "Refunded"
-  | "Settled";
+  | "Settled"
+  | "EmergencyRecovered";
 export type ChallengeState =
   | "Open"
   | "Accepted"
@@ -27,7 +28,8 @@ export type ChallengeState =
   | "Resolved"
   | "Cancelled"
   | "Fraud"
-  | "Refunded";
+  | "Refunded"
+  | "Disputed";
 export type ModeAffinity = "Vanilla" | "Underworld" | "Both";
 export type CreationEntityType = "Market" | "Bounty" | "Challenge";
 export type CreatorTier = "Basic" | "Verified" | "Premium" | "Suspended";
@@ -157,6 +159,7 @@ export interface ChallengeDTO {
   rewardPool: bigint;
   deadline?: string;
   state: ChallengeState;
+  riskLevel: RiskLevel;
   metadataURI?: string;
   rulesHash?: string;
   liveStreamURI?: string;
@@ -167,6 +170,25 @@ export interface ChallengeDTO {
   rewardPayout?: bigint;
   adminFee?: bigint;
   creatorFee?: bigint;
+}
+
+export interface BountyDTO {
+  id: string;
+  chainId: ChainId;
+  address: Address;
+  creator: Address;
+  settlementToken: Address;
+  title: string;
+  description: string;
+  rewardPool: bigint;
+  rewardEscrow: bigint;
+  deadline: string;
+  state: BountyState;
+  metadataURI: string;
+  rulesHash: string;
+  winners?: readonly Address[];
+  amounts?: readonly bigint[];
+  lastReasonHash?: string;
 }
 
 export interface QuestDTO {

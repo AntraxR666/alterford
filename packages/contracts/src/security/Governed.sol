@@ -9,6 +9,7 @@ abstract contract Governed {
     bytes32 public constant RESOLVER_ROLE = keccak256("RESOLVER");
     bytes32 public constant ARBITER_ROLE = keccak256("ARBITER");
     bytes32 public constant MODULE_ROLE = keccak256("MODULE");
+    bytes32 public constant WATCHER_ROLE = keccak256("WATCHER");
 
     address public immutable admin;
     mapping(bytes32 => mapping(address => bool)) public hasRole;

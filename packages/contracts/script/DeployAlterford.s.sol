@@ -6,6 +6,7 @@ import { BountyFactory } from "../src/factories/BountyFactory.sol";
 import { ChallengeFactory } from "../src/factories/ChallengeFactory.sol";
 import { MarketFactory } from "../src/factories/MarketFactory.sol";
 import { MockSettlementToken } from "../src/token/MockSettlementToken.sol";
+import { BountyRecoveryVault } from "../src/security/BountyRecoveryVault.sol";
 
 interface Vm {
     function startBroadcast() external;
@@ -15,14 +16,26 @@ interface Vm {
 contract DeployAlterford {
     Vm internal constant VM = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
 
-    function run(address admin) external {
+    function run(
+        address admin,
+        address settlementTokenAddress,
+        address creationBondPolicyAddress,
+        address securityCouncil,
+        address coldWallet
+    ) external {
         VM.startBroadcast();
 
-        MockSettlementToken settlementToken = new MockSettlementToken();
-        CreationBondPolicy creationBondPolicy = new CreationBondPolicy(admin);
+        MockSettlementToken settlementToken = settlementTokenAddress == address(0)
+            ? new MockSettlementToken()
+            : MockSettlementToken(settlementTokenAddress);
+        CreationBondPolicy creationBondPolicy = creationBondPolicyAddress == address(0)
+            ? new CreationBondPolicy(admin)
+            : CreationBondPolicy(creationBondPolicyAddress);
         new MarketFactory(admin, address(creationBondPolicy));
-        new BountyFactory(admin, address(creationBondPolicy));
+        BountyFactory bountyFactory = new BountyFactory(admin, address(creationBondPolicy));
         new ChallengeFactory(admin, address(creationBondPolicy));
+        BountyRecoveryVault recoveryVault = new BountyRecoveryVault(securityCouncil, coldWallet);
+        bountyFactory.setRecoveryVault(address(recoveryVault));
 
         settlementToken.totalSupply();
 

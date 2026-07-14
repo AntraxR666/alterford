@@ -1,11 +1,11 @@
-import { BPS_DENOMINATOR } from "./constants";
+import { BPS_DENOMINATOR } from "./constants.js";
 import type {
   BondTier,
   CreationBondEstimate,
   CreationBondInput,
   CreationBondPolicyConfig,
-} from "./types";
-import { formatUsdt } from "./economics";
+} from "./types.js";
+import { formatUsdt } from "./economics.js";
 
 const REASON_SMALL_LOW_RISK = 1 << 0;
 const REASON_UNDERWORLD = 1 << 1;

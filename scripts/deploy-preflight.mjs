@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createPublicClient, formatEther, http, isAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { redactedRpcUrl } from "./deploy-config.mjs";
 
 const args = new Set(process.argv.slice(2));
 const chainName = args.has("--chain") ? process.argv[process.argv.indexOf("--chain") + 1] : "local";
@@ -22,6 +23,10 @@ const chainConfig = {
     rpcUrl: process.env.RPC_URL || process.env.BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org",
     accountName: process.env.FOUNDRY_ACCOUNT || process.env.ETH_KEYSTORE_ACCOUNT,
     passwordFile: process.env.FOUNDRY_PASSWORD_FILE || process.env.ETH_PASSWORD,
+    settlementTokenAddress: process.env.SETTLEMENT_TOKEN_ADDRESS,
+    creationBondPolicyAddress: process.env.CREATION_BOND_POLICY_ADDRESS,
+    securityCouncil: process.env.SECURITY_COUNCIL_ADDRESS,
+    coldWallet: process.env.COLD_WALLET_ADDRESS,
   },
 }[chainName];
 
@@ -38,6 +43,11 @@ function record(name, ok, details = {}) {
 }
 
 let account;
+const existingDeployment = await readOptionalJson(resolve("deployments", `${chainConfig.id}.json`));
+const settlementTokenAddress =
+  chainConfig.settlementTokenAddress || existingDeployment?.contracts?.settlementToken?.address;
+const creationBondPolicyAddress =
+  chainConfig.creationBondPolicyAddress || existingDeployment?.contracts?.creationBondPolicy?.address;
 if (chainName === "base-sepolia") {
   record("foundry_account_present", Boolean(chainConfig.accountName), { required: true });
   record("keystore_password_file_present", Boolean(chainConfig.passwordFile) || process.env.ALLOW_INTERACTIVE_KEYSTORE === "1", {
@@ -51,6 +61,24 @@ if (chainName === "base-sepolia") {
       record("foundry_account_valid", false, { error: errorMessage(error) });
     }
   }
+  record("security_council_valid", isAddress(chainConfig.securityCouncil ?? ""), {
+    address: chainConfig.securityCouncil,
+  });
+  record("cold_wallet_valid", isAddress(chainConfig.coldWallet ?? ""), {
+    address: chainConfig.coldWallet,
+  });
+  record(
+    "security_council_is_not_cold_wallet",
+    isAddress(chainConfig.securityCouncil ?? "")
+      && isAddress(chainConfig.coldWallet ?? "")
+      && chainConfig.securityCouncil.toLowerCase() !== chainConfig.coldWallet.toLowerCase(),
+  );
+  record("settlement_token_reuse_address", isAddress(settlementTokenAddress ?? ""), {
+    address: settlementTokenAddress,
+  });
+  record("bond_policy_reuse_address", isAddress(creationBondPolicyAddress ?? ""), {
+    address: creationBondPolicyAddress,
+  });
 } else {
   record("private_key_present", Boolean(chainConfig.privateKey), { required: false });
   try {
@@ -67,6 +95,7 @@ for (const artifact of [
   "MarketFactory",
   "BountyFactory",
   "ChallengeFactory",
+  "BountyRecoveryVault",
 ]) {
   try {
     const compiled = await readArtifact(artifact);
@@ -90,7 +119,7 @@ try {
   record("rpc_chain_id", rpcChainId === chainConfig.id, {
     expected: chainConfig.id,
     actual: rpcChainId,
-    rpcUrl: chainConfig.rpcUrl,
+    rpcUrl: redactedRpcUrl(chainConfig.rpcUrl),
   });
 
   if (account) {
@@ -100,11 +129,25 @@ try {
       balanceEth: formatEther(balance),
     });
   }
+  if (chainName === "base-sepolia" && isAddress(settlementTokenAddress ?? "")) {
+    const code = await publicClient.getBytecode({ address: settlementTokenAddress });
+    record("settlement_token_has_code", Boolean(code && code !== "0x"), {
+      address: settlementTokenAddress,
+    });
+  }
+  if (chainName === "base-sepolia" && isAddress(creationBondPolicyAddress ?? "")) {
+    const code = await publicClient.getBytecode({ address: creationBondPolicyAddress });
+    record("bond_policy_has_code", Boolean(code && code !== "0x"), {
+      address: creationBondPolicyAddress,
+    });
+  }
 } catch (error) {
-  record("rpc_reachable", false, { rpcUrl: chainConfig.rpcUrl, error: errorMessage(error) });
+  record("rpc_reachable", false, {
+    rpcUrl: redactedRpcUrl(chainConfig.rpcUrl),
+    error: errorMessage(error),
+  });
 }
 
-const existingDeployment = await readOptionalJson(resolve("deployments", `${chainConfig.id}.json`));
 if (existingDeployment) {
   const coreAddresses = [
     existingDeployment.contracts?.settlementToken?.address,

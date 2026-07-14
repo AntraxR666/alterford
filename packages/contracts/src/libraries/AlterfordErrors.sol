@@ -33,4 +33,18 @@ library AlterfordErrors {
     error EvidenceImmutable();
     error BondAlreadyFinalized();
     error InvalidBondPolicy();
+    error InvalidSignature();
+    error InvalidNonce();
+    error SignatureExpired();
+    error InvalidRelayer();
+    error DuplicateRecipient();
+    error EscrowAlreadyRecovered();
+    error RecoveryVaultNotConfigured();
+    error InvalidIncidentHash();
+    error ResolutionAlreadyProposed();
+    error ResolutionNotProposed();
+    error ResolutionMismatch();
+    error DisputeAlreadyOpened();
+    error ChallengeDurationTooLong();
+    error TooManyRecipients();
 }

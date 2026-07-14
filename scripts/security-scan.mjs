@@ -14,14 +14,14 @@ const tools = {
       "packages/contracts",
       "--foundry-compile-all",
       "--filter-paths",
-      "test/",
+      "test/|script/|lib/|node_modules/",
       "--exclude",
-      "timestamp,divide-before-multiply",
+      "timestamp,divide-before-multiply,naming-convention",
     ],
     install: "pipx install slither-analyzer",
     wslCommand:
       localWslSlither && wslRepoPath
-        ? `cd ${shellQuote(wslRepoPath)} && export PATH="$HOME/.foundry/bin:${wslRepoPath}/.venv-slither/bin:$PATH" && slither packages/contracts --foundry-compile-all --filter-paths test/ --exclude timestamp,divide-before-multiply`
+        ? `cd ${shellQuote(wslRepoPath)} && export PATH="$HOME/.foundry/bin:${wslRepoPath}/.venv-slither/bin:$PATH" && slither packages/contracts --foundry-compile-all --filter-paths 'test/|script/|lib/|node_modules/' --exclude timestamp,divide-before-multiply,naming-convention`
         : null,
     wslVersionCommand:
       localWslSlither && wslRepoPath

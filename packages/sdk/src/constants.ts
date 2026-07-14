@@ -1,4 +1,4 @@
-import type { CreationBondPolicyConfig, EconomicsConfig } from "./types";
+import type { CreationBondPolicyConfig, EconomicsConfig } from "./types.js";
 
 export const BPS_DENOMINATOR = 10_000n;
 

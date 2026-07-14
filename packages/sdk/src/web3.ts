@@ -7,7 +7,7 @@ import type {
   CreatorTier,
   ReputationBand,
   RiskLevel,
-} from "./types";
+} from "./types.js";
 
 export const BASE_MAINNET_CHAIN_ID = 8453;
 export const BASE_SEPOLIA_CHAIN_ID = 84532;

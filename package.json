@@ -32,9 +32,18 @@
     "security:echidna": "node scripts/security-scan.mjs echidna",
     "security:mythril": "node scripts/security-scan.mjs mythril",
     "security:all": "node scripts/security-scan.mjs all",
-    "web:env": "node scripts/write-web-env.mjs"
+    "web:env": "node scripts/write-web-env.mjs",
+    "test:web:pipeline": "vitest run scripts",
+    "preflight:web": "node scripts/web-preflight.mjs",
+    "build:web:static": "node scripts/build-web-static.mjs",
+    "deploy:web:ipfs": "node scripts/deploy-web-ipfs.mjs",
+    "deploy:web:arweave": "node scripts/deploy-web-arweave.mjs",
+    "release:web:stable": "node scripts/release-web-stable.mjs"
   },
   "devDependencies": {
+    "@fleek-platform/sdk": "3.7.2",
+    "@irys/upload": "0.0.15",
+    "@irys/upload-ethereum": "0.0.16",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",
@@ -43,6 +52,7 @@
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
     "autoprefixer": "^10.4.21",
+    "jiti": "2.7.0",
     "jsdom": "^26.1.0",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.17",

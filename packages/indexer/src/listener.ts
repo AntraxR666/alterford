@@ -1,17 +1,32 @@
 import {
+  bountyFactoryAbi,
+  bountyRecoveryVaultAbi,
+  challengeFactoryAbi,
+  marketFactoryAbi,
+  type BountyState,
+  type ChallengeState,
+  type RiskLevel,
+} from "@alterford/sdk";
+import {
   createPublicClient,
   decodeEventLog,
   hexToString,
   http,
+  type Abi,
   type Address,
   type Chain,
-  type PublicClient,
   type Hex,
+  type PublicClient,
 } from "viem";
 import type { AlterfordEvent, BondEntityType } from "./events.js";
 import { eventIdentity } from "./events.js";
 import { createInitialProjectionState, projectEvent } from "./projections.js";
-import { createBlockCheckpoint, replayEventJournal, rollbackJournalToBlock, shouldReorgFromBlock } from "./reorg.js";
+import {
+  createBlockCheckpoint,
+  replayEventJournal,
+  rollbackJournalToBlock,
+  shouldReorgFromBlock,
+} from "./reorg.js";
 import type { PersistedIndexerState } from "./store.js";
 import { saveIndexerState } from "./store.js";
 
@@ -19,202 +34,19 @@ export interface MarketFactoryListenerOptions {
   rpcUrl: string;
   chainId: number;
   marketFactory: Address;
+  bountyFactory?: Address;
   challengeFactory?: Address;
+  bountyRecoveryVault?: Address;
   storePath: string;
   confirmations?: number;
 }
 
-const factoryEventAbi = [
-  {
-    type: "event",
-    name: "MarketCreated",
-    inputs: [
-      { name: "marketId", type: "uint256", indexed: true },
-      { name: "creator", type: "address", indexed: true },
-      { name: "settlementToken", type: "address", indexed: true },
-      { name: "metadataHash", type: "bytes32", indexed: false },
-      { name: "metadataURI", type: "string", indexed: false },
-    ],
-  },
-  {
-    type: "event",
-    name: "BetPlaced",
-    inputs: [
-      { name: "marketId", type: "uint256", indexed: true },
-      { name: "user", type: "address", indexed: true },
-      { name: "outcome", type: "uint8", indexed: true },
-      { name: "amount", type: "uint256", indexed: false },
-    ],
-  },
-  {
-    type: "event",
-    name: "MarketResolved",
-    inputs: [
-      { name: "marketId", type: "uint256", indexed: true },
-      { name: "winningOutcome", type: "uint8", indexed: false },
-    ],
-  },
-  {
-    type: "event",
-    name: "FeesAccrued",
-    inputs: [
-      { name: "marketId", type: "uint256", indexed: true },
-      { name: "admin", type: "address", indexed: true },
-      { name: "creator", type: "address", indexed: true },
-      { name: "adminFee", type: "uint256", indexed: false },
-      { name: "creatorFee", type: "uint256", indexed: false },
-    ],
-  },
-  {
-    type: "event",
-    name: "RewardClaimed",
-    inputs: [
-      { name: "marketId", type: "uint256", indexed: true },
-      { name: "user", type: "address", indexed: true },
-      { name: "amount", type: "uint256", indexed: false },
-    ],
-  },
-  {
-    type: "event",
-    name: "RefundClaimed",
-    inputs: [
-      { name: "marketId", type: "uint256", indexed: true },
-      { name: "user", type: "address", indexed: true },
-      { name: "amount", type: "uint256", indexed: false },
-    ],
-  },
-  {
-    type: "event",
-    name: "BondCalculated",
-    inputs: [
-      { name: "entityType", type: "bytes32", indexed: true },
-      { name: "entityId", type: "uint256", indexed: true },
-      { name: "creator", type: "address", indexed: true },
-      { name: "requiredBond", type: "uint256", indexed: false },
-      { name: "reasonFlags", type: "uint16", indexed: false },
-    ],
-  },
-  {
-    type: "event",
-    name: "BondLocked",
-    inputs: [
-      { name: "entityType", type: "bytes32", indexed: true },
-      { name: "entityId", type: "uint256", indexed: true },
-      { name: "creator", type: "address", indexed: true },
-      { name: "amount", type: "uint256", indexed: false },
-    ],
-  },
-  {
-    type: "event",
-    name: "BondReleased",
-    inputs: [
-      { name: "entityType", type: "bytes32", indexed: true },
-      { name: "entityId", type: "uint256", indexed: true },
-      { name: "creator", type: "address", indexed: true },
-      { name: "amount", type: "uint256", indexed: false },
-    ],
-  },
-  {
-    type: "event",
-    name: "BondSlashed",
-    inputs: [
-      { name: "entityType", type: "bytes32", indexed: true },
-      { name: "entityId", type: "uint256", indexed: true },
-      { name: "amount", type: "uint256", indexed: false },
-      { name: "reasonHash", type: "bytes32", indexed: false },
-    ],
-  },
-  {
-    type: "event",
-    name: "ChallengeCreated",
-    inputs: [
-      { name: "challengeId", type: "uint256", indexed: true },
-      { name: "creator", type: "address", indexed: true },
-      { name: "rewardPool", type: "uint256", indexed: false },
-      { name: "rulesHash", type: "bytes32", indexed: false },
-    ],
-  },
-  {
-    type: "event",
-    name: "ChallengeAccepted",
-    inputs: [
-      { name: "challengeId", type: "uint256", indexed: true },
-      { name: "executor", type: "address", indexed: true },
-      { name: "executorBond", type: "uint256", indexed: false },
-    ],
-  },
-  {
-    type: "event",
-    name: "ChallengeLiveStreamUpdated",
-    inputs: [
-      { name: "challengeId", type: "uint256", indexed: true },
-      { name: "actor", type: "address", indexed: true },
-      { name: "liveStreamURI", type: "string", indexed: false },
-    ],
-  },
-  {
-    type: "event",
-    name: "ChallengeEvidenceSubmitted",
-    inputs: [
-      { name: "challengeId", type: "uint256", indexed: true },
-      { name: "executor", type: "address", indexed: true },
-      { name: "evidenceHash", type: "bytes32", indexed: false },
-      { name: "evidenceURI", type: "string", indexed: false },
-      { name: "liveStreamURI", type: "string", indexed: false },
-    ],
-  },
-  {
-    type: "event",
-    name: "ChallengeResolved",
-    inputs: [
-      { name: "challengeId", type: "uint256", indexed: true },
-      { name: "winner", type: "address", indexed: true },
-      { name: "executorSucceeded", type: "bool", indexed: false },
-      { name: "rewardPayout", type: "uint256", indexed: false },
-      { name: "adminFee", type: "uint256", indexed: false },
-      { name: "creatorFee", type: "uint256", indexed: false },
-    ],
-  },
-  {
-    type: "event",
-    name: "ChallengeCancelled",
-    inputs: [
-      { name: "challengeId", type: "uint256", indexed: true },
-      { name: "reasonHash", type: "bytes32", indexed: false },
-    ],
-  },
-  {
-    type: "event",
-    name: "ChallengeFraudConfirmed",
-    inputs: [
-      { name: "challengeId", type: "uint256", indexed: true },
-      { name: "offender", type: "address", indexed: true },
-      { name: "reasonHash", type: "bytes32", indexed: false },
-    ],
-  },
-] as const;
-
-const challengeGetterAbi = [
-  {
-    type: "function",
-    name: "challenges",
-    stateMutability: "view",
-    inputs: [{ name: "challengeId", type: "uint256" }],
-    outputs: [
-      { name: "creator", type: "address" },
-      { name: "executor", type: "address" },
-      { name: "settlementToken", type: "address" },
-      { name: "rulesHash", type: "bytes32" },
-      { name: "metadataURI", type: "string" },
-      { name: "liveStreamURI", type: "string" },
-      { name: "rewardPool", type: "uint256" },
-      { name: "deadline", type: "uint256" },
-      { name: "state", type: "uint8" },
-      { name: "evidenceHash", type: "bytes32" },
-      { name: "evidenceURI", type: "string" },
-    ],
-  },
-] as const;
+const factoryEventAbi = uniqueEventAbi([
+  ...marketFactoryAbi,
+  ...bountyFactoryAbi,
+  ...challengeFactoryAbi,
+  ...bountyRecoveryVaultAbi,
+]);
 
 export async function pollMarketFactoryEvents(
   indexerState: PersistedIndexerState,
@@ -231,13 +63,16 @@ export async function pollMarketFactoryEvents(
   const latest = await client.getBlockNumber();
   const toBlock = latest > confirmations ? latest - confirmations : 0n;
 
-  if (toBlock <= indexerState.cursor.lastProcessedBlock) {
-    return indexerState;
-  }
+  if (toBlock <= indexerState.cursor.lastProcessedBlock) return indexerState;
 
   const logs = [];
   const maxLogBlockRange = BigInt(process.env.MAX_LOG_BLOCK_RANGE || "2000");
-  const factoryAddresses = [options.marketFactory, options.challengeFactory].filter(Boolean) as Address[];
+  const factoryAddresses = [
+    options.marketFactory,
+    options.bountyFactory,
+    options.challengeFactory,
+    options.bountyRecoveryVault,
+  ].filter(Boolean) as Address[];
   let fromBlock = indexerState.cursor.lastProcessedBlock + 1n;
   while (fromBlock <= toBlock) {
     const chunkToBlock =
@@ -274,7 +109,13 @@ export async function pollMarketFactoryEvents(
         createBlockCheckpoint(log.blockNumber ?? 0n, log.blockHash),
       );
     }
-    const event = await decodeAlterfordLog(options.chainId, log, client, options.challengeFactory);
+    const event = await decodeAlterfordLog(
+      options.chainId,
+      log,
+      client,
+      options.challengeFactory,
+      options.bountyFactory,
+    );
     if (event) {
       indexerState.journal.push(event);
       projectEvent(indexerState.projection, event);
@@ -290,11 +131,19 @@ export async function pollMarketFactoryEvents(
   return indexerState;
 }
 
-async function decodeAlterfordLog(
+export async function decodeAlterfordLog(
   chainId: number,
-  log: { address?: Address; blockNumber: bigint | null; transactionHash: Hex | null; logIndex: number; data: Hex; topics: Hex[] },
-  client: PublicClient,
+  log: {
+    address?: Address;
+    blockNumber: bigint | null;
+    transactionHash: Hex | null;
+    logIndex: number;
+    data: Hex;
+    topics: readonly Hex[];
+  },
+  client: Pick<PublicClient, "readContract">,
   challengeFactory?: Address,
+  bountyFactory?: Address,
 ): Promise<AlterfordEvent | null> {
   if (log.blockNumber === null || log.transactionHash === null) return null;
 
@@ -304,8 +153,8 @@ async function decodeAlterfordLog(
       data: log.data,
       topics: log.topics as [`0x${string}`, ...`0x${string}`[]],
       strict: false,
-    });
-    const args = decoded.args as Record<string, unknown>;
+    }) as unknown as { eventName: string; args: Record<string, unknown> };
+    const args = decoded.args;
     const base = {
       id: eventIdentity({ chainId, blockNumber: log.blockNumber, logIndex: log.logIndex }),
       chainId,
@@ -339,6 +188,29 @@ async function decodeAlterfordLog(
             user: args.user as Address,
             outcome: Number(args.outcome),
             amount: args.amount as bigint,
+          },
+        };
+      case "SignedBetExecuted":
+        return {
+          ...base,
+          type: "SignedBetExecuted",
+          payload: {
+            marketId: String(args.marketId),
+            bettor: args.bettor as Address,
+            relayer: args.relayer as Address,
+            outcome: Number(args.outcome),
+            amount: args.amount as bigint,
+            nonce: args.nonce as bigint,
+          },
+        };
+      case "NonceInvalidated":
+        return {
+          ...base,
+          type: "NonceInvalidated",
+          payload: {
+            bettor: args.bettor as Address,
+            oldNonce: args.oldNonce as bigint,
+            newNonce: args.newNonce as bigint,
           },
         };
       case "MarketResolved":
@@ -382,6 +254,86 @@ async function decodeAlterfordLog(
             amount: args.amount as bigint,
           },
         };
+      case "BountyCreated": {
+        const bountyId = String(args.bountyId);
+        const details =
+          bountyFactory && log.address?.toLowerCase() === bountyFactory.toLowerCase()
+            ? await readBountyDetails(client, bountyFactory, BigInt(bountyId))
+            : null;
+        return {
+          ...base,
+          type: "BountyCreated",
+          payload: {
+            bountyId,
+            creator: args.creator as Address,
+            rewardPool: args.rewardPool as bigint,
+            rewardEscrow: details?.rewardEscrow ?? (args.rewardPool as bigint),
+            rulesHash: args.rulesHash as string,
+            settlementToken: details?.settlementToken,
+            deadline: details?.deadline,
+            metadataURI: details?.metadataURI,
+            state: details?.state,
+          },
+        };
+      }
+      case "SubmissionCreated":
+        return {
+          ...base,
+          type: "SubmissionCreated",
+          payload: {
+            bountyId: String(args.bountyId),
+            submitter: args.submitter as Address,
+            submissionHash: args.submissionHash as string,
+          },
+        };
+      case "BountyResolved":
+        return {
+          ...base,
+          type: "BountyResolved",
+          payload: {
+            bountyId: String(args.bountyId),
+            winners: args.winners as Address[],
+            amounts: args.amounts as bigint[],
+          },
+        };
+      case "BountyCancelled":
+        return {
+          ...base,
+          type: "BountyCancelled",
+          payload: { bountyId: String(args.bountyId), reasonHash: args.reasonHash as string },
+        };
+      case "RecoveryVaultUpdated":
+        return {
+          ...base,
+          type: "RecoveryVaultUpdated",
+          payload: { oldVault: args.oldVault as Address, newVault: args.newVault as Address },
+        };
+      case "EmergencyBountyRecovered":
+        return {
+          ...base,
+          type: "EmergencyBountyRecovered",
+          payload: {
+            bountyId: String(args.bountyId),
+            token: args.token as Address,
+            recoveryVault: args.recoveryVault as Address,
+            rewardAmount: args.rewardAmount as bigint,
+            bondAmount: args.bondAmount as bigint,
+            incidentHash: args.incidentHash as string,
+            securityAdmin: args.securityAdmin as Address,
+          },
+        };
+      case "EmergencyLiquidityRecovered":
+        return {
+          ...base,
+          type: "EmergencyLiquidityRecovered",
+          payload: {
+            token: args.token as Address,
+            coldWallet: args.coldWallet as Address,
+            amount: args.amount as bigint,
+            incidentHash: args.incidentHash as string,
+            securityAdmin: args.securityAdmin as Address,
+          },
+        };
       case "ChallengeCreated": {
         const challengeId = String(args.challengeId);
         const details =
@@ -400,6 +352,7 @@ async function decodeAlterfordLog(
             metadataURI: details?.metadataURI,
             deadline: details?.deadline,
             state: details?.state,
+            riskLevel: details?.riskLevel,
           },
         };
       }
@@ -435,6 +388,66 @@ async function decodeAlterfordLog(
             liveStreamURI: args.liveStreamURI as string,
           },
         };
+      case "ChallengeResolutionProposed":
+        return {
+          ...base,
+          type: "ChallengeResolutionProposed",
+          payload: {
+            challengeId: String(args.challengeId),
+            proposer: args.proposer as Address,
+            executorSucceeded: Boolean(args.executorSucceeded),
+            evidenceHash: args.evidenceHash as string,
+            disputeDeadline: args.disputeDeadline as bigint,
+          },
+        };
+      case "ChallengeResolutionConfirmed":
+        return {
+          ...base,
+          type: "ChallengeResolutionConfirmed",
+          payload: {
+            challengeId: String(args.challengeId),
+            confirmer: args.confirmer as Address,
+            executorSucceeded: Boolean(args.executorSucceeded),
+          },
+        };
+      case "ChallengeResolutionDisputed":
+        return {
+          ...base,
+          type: "ChallengeResolutionDisputed",
+          payload: {
+            challengeId: String(args.challengeId),
+            disputant: args.disputant as Address,
+            bondAmount: args.bondAmount as bigint,
+            reasonHash: args.reasonHash as string,
+          },
+        };
+      case "ChallengeDisputeResolved":
+        return {
+          ...base,
+          type: "ChallengeDisputeResolved",
+          payload: {
+            challengeId: String(args.challengeId),
+            executorSucceeded: Boolean(args.executorSucceeded),
+            disputeSucceeded: Boolean(args.disputeSucceeded),
+            reasonHash: args.reasonHash as string,
+          },
+        };
+      case "ChallengeResolvedEarly":
+        return {
+          ...base,
+          type: "ChallengeResolvedEarly",
+          payload: {
+            challengeId: String(args.challengeId),
+            executorSucceeded: Boolean(args.executorSucceeded),
+            reasonHash: args.reasonHash as string,
+          },
+        };
+      case "ResolutionWindowUpdated":
+        return {
+          ...base,
+          type: "ResolutionWindowUpdated",
+          payload: { oldWindow: args.oldWindow as bigint, newWindow: args.newWindow as bigint },
+        };
       case "ChallengeResolved":
         return {
           ...base,
@@ -452,10 +465,7 @@ async function decodeAlterfordLog(
         return {
           ...base,
           type: "ChallengeCancelled",
-          payload: {
-            challengeId: String(args.challengeId),
-            reasonHash: args.reasonHash as string,
-          },
+          payload: { challengeId: String(args.challengeId), reasonHash: args.reasonHash as string },
         };
       case "ChallengeFraudConfirmed":
         return {
@@ -520,11 +530,15 @@ async function decodeAlterfordLog(
   }
 }
 
-async function readChallengeDetails(client: PublicClient, challengeFactory: Address, challengeId: bigint) {
+async function readChallengeDetails(
+  client: Pick<PublicClient, "readContract">,
+  challengeFactory: Address,
+  challengeId: bigint,
+) {
   try {
     const result = await client.readContract({
       address: challengeFactory,
-      abi: challengeGetterAbi,
+      abi: challengeFactoryAbi,
       functionName: "challenges",
       args: [challengeId],
     });
@@ -534,27 +548,94 @@ async function readChallengeDetails(client: PublicClient, challengeFactory: Addr
       metadataURI: values[4] as string,
       deadline: values[7] as bigint,
       state: decodeChallengeState(Number(values[8] ?? 0)),
+      riskLevel: decodeRiskLevel(Number(values[11] ?? 0)),
     };
   } catch {
     return null;
   }
 }
 
-function decodeChallengeState(value: number) {
-  return ([
-    "Open",
-    "Accepted",
-    "EvidenceSubmitted",
-    "Review",
-    "Resolved",
-    "Cancelled",
-    "Fraud",
-    "Refunded",
-  ] as const)[value] ?? "Open";
+async function readBountyDetails(
+  client: Pick<PublicClient, "readContract">,
+  bountyFactory: Address,
+  bountyId: bigint,
+) {
+  try {
+    const result = await client.readContract({
+      address: bountyFactory,
+      abi: bountyFactoryAbi,
+      functionName: "bounties",
+      args: [bountyId],
+    });
+    const values = result as readonly unknown[];
+    return {
+      settlementToken: values[1] as Address,
+      deadline: values[3] as bigint,
+      metadataURI: values[5] as string,
+      state: decodeBountyState(Number(values[6] ?? 0)),
+      rewardEscrow: values[2] as bigint,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function decodeChallengeState(value: number): ChallengeState {
+  return (
+    [
+      "Open",
+      "Accepted",
+      "EvidenceSubmitted",
+      "Review",
+      "Resolved",
+      "Cancelled",
+      "Fraud",
+      "Refunded",
+      "Disputed",
+    ] as const
+  )[value] ?? "Open";
+}
+
+function decodeBountyState(value: number): BountyState {
+  return (
+    [
+      "Open",
+      "SubmissionClosed",
+      "Review",
+      "Resolved",
+      "Cancelled",
+      "Fraud",
+      "Refunded",
+      "Settled",
+      "EmergencyRecovered",
+    ] as const
+  )[value] ?? "Open";
+}
+
+function decodeRiskLevel(value: number): RiskLevel {
+  return (["Low", "Medium", "High", "Critical"] as const)[value] ?? "Low";
 }
 
 function decodeEntityType(value: Hex): BondEntityType {
   const decoded = hexToString(value, { size: 32 }).replace(/\0/g, "");
-  if (decoded === "Bounty" || decoded === "Challenge" || decoded === "ChallengeExecutor") return decoded;
+  if (
+    decoded === "Bounty" ||
+    decoded === "Challenge" ||
+    decoded === "ChallengeExecutor" ||
+    decoded === "ChallengeDispute"
+  ) {
+    return decoded;
+  }
   return "Market";
+}
+
+function uniqueEventAbi(abi: readonly { type: string; name?: string; inputs?: readonly unknown[] }[]): Abi {
+  const seen = new Set<string>();
+  return abi.filter((item) => {
+    if (item.type !== "event") return false;
+    const signature = `${item.name}:${JSON.stringify(item.inputs)}`;
+    if (seen.has(signature)) return false;
+    seen.add(signature);
+    return true;
+  }) as Abi;
 }

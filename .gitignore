@@ -9,8 +9,10 @@ cache/
 data/
 out/
 broadcast/
+packages/contracts/lib/
 .superpowers/
 .venv*/
 slither-report.json
 *.log
 pnpm-debug.log*
+.codex-remote-attachments/

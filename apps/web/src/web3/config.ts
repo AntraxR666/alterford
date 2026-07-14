@@ -7,7 +7,12 @@ export const anvil = {
   name: "Anvil",
   nativeCurrency: { decimals: 18, name: "Ether", symbol: "ETH" },
   rpcUrls: {
-    default: { http: [import.meta.env.VITE_LOCAL_RPC_URL || "http://127.0.0.1:8545"] },
+    default: {
+      http: [
+        import.meta.env.VITE_LOCAL_RPC_URL
+          || (import.meta.env.DEV ? "http://127.0.0.1:8545" : "https://sepolia.base.org"),
+      ],
+    },
   },
 } as const;
 
@@ -17,7 +22,7 @@ export const targetChain =
   baseSepolia;
 
 const walletConnectProjectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID;
-const appUrl = import.meta.env.VITE_APP_URL || globalThis.location?.origin || "http://127.0.0.1:5173";
+const appUrl = import.meta.env.VITE_APP_URL || globalThis.location?.origin || "https://alterford.invalid";
 const connectors = [
   injected(),
   ...(walletConnectProjectId

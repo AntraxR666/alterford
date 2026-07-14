@@ -1,4 +1,4 @@
-import { BPS_DENOMINATOR } from "./constants";
+import { BPS_DENOMINATOR } from "./constants.js";
 import type {
   EconomicsConfig,
   FeeSplit,
@@ -6,7 +6,7 @@ import type {
   MarketSettlementInput,
   NoWinnersPolicy,
   SettlementStatus,
-} from "./types";
+} from "./types.js";
 
 function assertEconomics(config: EconomicsConfig): void {
   if (config.adminFeeBps + config.creatorFeeBps !== config.totalFeeBps) {

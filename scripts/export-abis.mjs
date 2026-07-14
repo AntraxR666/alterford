@@ -7,6 +7,7 @@ const contracts = [
   "MarketFactory",
   "BountyFactory",
   "ChallengeFactory",
+  "BountyRecoveryVault",
 ];
 
 await mkdir(resolve("deployments", "abis"), { recursive: true });

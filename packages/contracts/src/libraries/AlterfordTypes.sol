@@ -28,7 +28,8 @@ library AlterfordTypes {
         Cancelled,
         Fraud,
         Refunded,
-        Settled
+        Settled,
+        EmergencyRecovered
     }
 
     enum ChallengeState {
@@ -39,7 +40,8 @@ library AlterfordTypes {
         Resolved,
         Cancelled,
         Fraud,
-        Refunded
+        Refunded,
+        Disputed
     }
 
     enum CreatorStatus {

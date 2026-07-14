@@ -26,7 +26,7 @@ contract RewardDistributor is Governed {
         pure
         returns (uint256 adminFee, uint256 creatorFee, uint256 totalFee)
     {
-        return FeePolicy.marketFees(totalPool, losingPool);
+        (adminFee, creatorFee, totalFee) = FeePolicy.marketFees(totalPool, losingPool);
     }
 
     function calculateChallengeFees(uint256 rewardPool)
@@ -34,7 +34,7 @@ contract RewardDistributor is Governed {
         pure
         returns (uint256 adminFee, uint256 creatorFee, uint256 totalFee)
     {
-        return FeePolicy.challengeFees(rewardPool);
+        (adminFee, creatorFee, totalFee) = FeePolicy.challengeFees(rewardPool);
     }
 
     function calculateWinnerPayout(

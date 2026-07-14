@@ -50,7 +50,7 @@ export interface CreateChallengeInput {
   evidence: string;
   liveStreamURI?: string;
   deadlineMinutes: number;
-  riskLevel: "High" | "Critical";
+  riskLevel: "Low" | "Medium" | "High" | "Critical";
 }
 
 export interface ChallengeActionInput {
@@ -237,6 +237,36 @@ export function useWeb3Flow(
       });
     });
 
+  const approveChallengeExecutorBond = () =>
+    runTx("Autorizar bond de ejecutor", (contracts) => {
+      if (!contracts.challengeFactory) throw new Error("ChallengeFactory is not configured for this network.");
+      return writeContractAsync({
+        address: contracts.settlementToken,
+        abi: erc20Abi,
+        functionName: "approve",
+        chainId: desiredChainId,
+        args: [contracts.challengeFactory, challengeExecutorCost],
+      });
+    });
+
+  const approveChallengeDispute = (input: ChallengeActionInput) =>
+    runTx("Autorizar bond de disputa", async (contracts) => {
+      if (!contracts.challengeFactory) throw new Error("ChallengeFactory is not configured for this network.");
+      const disputeBond = await publicClient!.readContract({
+        address: contracts.challengeFactory,
+        abi: challengeFactoryAbi,
+        functionName: "disputeBondFor",
+        args: [BigInt(input.challengeId || "1")],
+      });
+      return writeContractAsync({
+        address: contracts.settlementToken,
+        abi: erc20Abi,
+        functionName: "approve",
+        chainId: desiredChainId,
+        args: [contracts.challengeFactory, disputeBond as bigint],
+      });
+    });
+
   const mintTestTokens = () =>
     runTx("Agregar fondos de prueba", (contracts) =>
       writeContractAsync({
@@ -297,6 +327,9 @@ export function useWeb3Flow(
       if (!contracts.challengeFactory) throw new Error("ChallengeFactory is not configured for this network.");
       const metadataURI = buildChallengeMetadataURI(input);
       const metadataSeed = `${input.title}-${input.evidence}-${input.stakeUsdt.toString()}-${Date.now()}`;
+      const highRiskOrValue =
+        input.stakeUsdt >= 1_000_000_000n || input.riskLevel === "High" || input.riskLevel === "Critical";
+      const maxDeadlineMinutes = highRiskOrValue ? 2_880 : 1_440;
       return writeContractAsync({
         address: contracts.challengeFactory,
         abi: challengeFactoryAbi,
@@ -307,7 +340,10 @@ export function useWeb3Flow(
           input.stakeUsdt,
           keccak256(toBytes(metadataSeed)),
           metadataURI,
-          BigInt(Math.floor(Date.now() / 1000) + Math.max(30, input.deadlineMinutes) * 60),
+          BigInt(
+            Math.floor(Date.now() / 1000)
+              + Math.min(maxDeadlineMinutes, Math.max(30, input.deadlineMinutes)) * 60,
+          ),
           toOnchainBondContext({
             entityType: "Challenge",
             mode: "Underworld",
@@ -369,6 +405,84 @@ export function useWeb3Flow(
           keccak256(toBytes(evidenceURI)),
           evidenceURI,
           input.liveStreamURI || "",
+        ],
+      });
+    });
+
+  const proposeChallengeResolution = (
+    input: ChallengeActionInput & { executorSucceeded: boolean },
+  ) =>
+    runTx("Proponer resultado del reto", (contracts) => {
+      if (!contracts.challengeFactory) throw new Error("ChallengeFactory is not configured for this network.");
+      const evidenceReference = input.evidenceURI || input.liveStreamURI || "";
+      return writeContractAsync({
+        address: contracts.challengeFactory,
+        abi: challengeFactoryAbi,
+        functionName: "proposeResolution",
+        chainId: desiredChainId,
+        args: [
+          BigInt(input.challengeId || "1"),
+          input.executorSucceeded,
+          evidenceReference ? keccak256(toBytes(evidenceReference)) : keccak256(toBytes("no-evidence")),
+        ],
+      });
+    });
+
+  const confirmChallengeResolution = (
+    input: ChallengeActionInput & { executorSucceeded: boolean },
+  ) =>
+    runTx("Confirmar resultado del reto", (contracts) => {
+      if (!contracts.challengeFactory) throw new Error("ChallengeFactory is not configured for this network.");
+      return writeContractAsync({
+        address: contracts.challengeFactory,
+        abi: challengeFactoryAbi,
+        functionName: "confirmResolution",
+        chainId: desiredChainId,
+        args: [BigInt(input.challengeId || "1"), input.executorSucceeded],
+      });
+    });
+
+  const disputeChallengeResolution = (input: ChallengeActionInput) =>
+    runTx("Abrir disputa del reto", (contracts) => {
+      if (!contracts.challengeFactory) throw new Error("ChallengeFactory is not configured for this network.");
+      return writeContractAsync({
+        address: contracts.challengeFactory,
+        abi: challengeFactoryAbi,
+        functionName: "disputeResolution",
+        chainId: desiredChainId,
+        args: [
+          BigInt(input.challengeId || "1"),
+          keccak256(toBytes(input.reason || "challenge-dispute")),
+        ],
+      });
+    });
+
+  const finalizeUndisputedChallenge = (input: ChallengeActionInput) =>
+    runTx("Finalizar reto sin disputa", (contracts) => {
+      if (!contracts.challengeFactory) throw new Error("ChallengeFactory is not configured for this network.");
+      return writeContractAsync({
+        address: contracts.challengeFactory,
+        abi: challengeFactoryAbi,
+        functionName: "finalizeUndisputed",
+        chainId: desiredChainId,
+        args: [BigInt(input.challengeId || "1")],
+      });
+    });
+
+  const resolveChallengeDispute = (
+    input: ChallengeActionInput & { executorSucceeded: boolean },
+  ) =>
+    runTx("Resolver disputa como arbitro", (contracts) => {
+      if (!contracts.challengeFactory) throw new Error("ChallengeFactory is not configured for this network.");
+      return writeContractAsync({
+        address: contracts.challengeFactory,
+        abi: challengeFactoryAbi,
+        functionName: "resolveDispute",
+        chainId: desiredChainId,
+        args: [
+          BigInt(input.challengeId || "1"),
+          input.executorSucceeded,
+          keccak256(toBytes(input.reason || "arbiter-dispute-resolution")),
         ],
       });
     });
@@ -491,12 +605,19 @@ export function useWeb3Flow(
     switchToTargetChain,
     approveSettlement,
     approveChallengeSettlement,
+    approveChallengeExecutorBond,
+    approveChallengeDispute,
     mintTestTokens,
     createMarket,
     createChallenge,
     acceptChallenge,
     updateChallengeLiveStream,
     submitChallengeEvidence,
+    proposeChallengeResolution,
+    confirmChallengeResolution,
+    disputeChallengeResolution,
+    finalizeUndisputedChallenge,
+    resolveChallengeDispute,
     resolveChallenge,
     cancelChallenge,
     placeBet,

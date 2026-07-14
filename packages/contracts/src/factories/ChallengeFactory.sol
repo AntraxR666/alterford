@@ -22,15 +22,35 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite {
         AlterfordTypes.ChallengeState state;
         bytes32 evidenceHash;
         string evidenceURI;
+        AlterfordTypes.RiskLevel riskLevel;
     }
+
+    struct ResolutionProposal {
+        address proposer;
+        bool executorSucceeded;
+        bytes32 evidenceHash;
+        uint64 proposedAt;
+        uint64 disputeDeadline;
+    }
+
+    uint256 public constant HIGH_VALUE_THRESHOLD = 1_000_000_000;
+    uint256 public constant MIN_DISPUTE_BOND = 1_000_000;
+    uint256 public constant MAX_DISPUTE_BOND = 100_000_000;
+    uint64 public constant MIN_STANDARD_RESOLUTION_WINDOW = 12 hours;
+    uint64 public constant MAX_STANDARD_RESOLUTION_WINDOW = 24 hours;
+    uint64 public constant HIGH_RISK_RESOLUTION_WINDOW = 48 hours;
 
     uint256 public nextChallengeId = 1;
     CreationBondPolicy public bondPolicy;
+    uint64 public standardResolutionWindow = MAX_STANDARD_RESOLUTION_WINDOW;
     mapping(uint256 => Challenge) public challenges;
     mapping(uint256 => uint256) public bondByChallenge;
     mapping(uint256 => uint256) public executorBondByChallenge;
     mapping(uint256 => bool) public bondFinalized;
     mapping(uint256 => bool) public rewardFinalized;
+    mapping(uint256 => ResolutionProposal) public resolutionProposalByChallenge;
+    mapping(uint256 => address) public disputantByChallenge;
+    mapping(uint256 => uint256) public disputeBondByChallenge;
 
     event ChallengeCreated(
         uint256 indexed challengeId, address indexed creator, uint256 rewardPool, bytes32 rulesHash
@@ -59,6 +79,32 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite {
     event ChallengeCancelled(uint256 indexed challengeId, bytes32 reasonHash);
     event ChallengeFraudConfirmed(
         uint256 indexed challengeId, address indexed offender, bytes32 reasonHash
+    );
+    event ResolutionWindowUpdated(uint64 oldWindow, uint64 newWindow);
+    event ChallengeResolutionProposed(
+        uint256 indexed challengeId,
+        address indexed proposer,
+        bool executorSucceeded,
+        bytes32 evidenceHash,
+        uint64 disputeDeadline
+    );
+    event ChallengeResolutionConfirmed(
+        uint256 indexed challengeId, address indexed confirmer, bool executorSucceeded
+    );
+    event ChallengeResolutionDisputed(
+        uint256 indexed challengeId,
+        address indexed disputant,
+        uint256 bondAmount,
+        bytes32 reasonHash
+    );
+    event ChallengeDisputeResolved(
+        uint256 indexed challengeId,
+        bool executorSucceeded,
+        bool disputeSucceeded,
+        bytes32 reasonHash
+    );
+    event ChallengeResolvedEarly(
+        uint256 indexed challengeId, bool executorSucceeded, bytes32 reasonHash
     );
     event BondPolicyUpdated(address indexed oldPolicy, address indexed newPolicy);
     event BondCalculated(
@@ -97,6 +143,16 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite {
         emit BondPolicyUpdated(oldPolicy, nextBondPolicy);
     }
 
+    function setStandardResolutionWindow(uint64 nextWindow) external onlyRole(GOVERNOR_ROLE) {
+        if (
+            nextWindow < MIN_STANDARD_RESOLUTION_WINDOW
+                || nextWindow > MAX_STANDARD_RESOLUTION_WINDOW
+        ) revert AlterfordErrors.InvalidAmount();
+        uint64 oldWindow = standardResolutionWindow;
+        standardResolutionWindow = nextWindow;
+        emit ResolutionWindowUpdated(oldWindow, nextWindow);
+    }
+
     function createChallenge(
         address settlementToken,
         uint256 rewardPool,
@@ -111,6 +167,12 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite {
         if (deadline <= block.timestamp) revert AlterfordErrors.InvalidAmount();
         if (bondContext.entityType != AlterfordTypes.EntityType.Challenge) {
             revert AlterfordErrors.InvalidBondPolicy();
+        }
+        uint256 maxDuration = _isHighRiskOrValue(rewardPool, bondContext.categoryRisk)
+            ? HIGH_RISK_RESOLUTION_WINDOW
+            : MAX_STANDARD_RESOLUTION_WINDOW;
+        if (deadline > block.timestamp + maxDuration) {
+            revert AlterfordErrors.ChallengeDurationTooLong();
         }
 
         (uint256 requiredBond, uint16 reasonFlags) = bondPolicy.previewBond(bondContext);
@@ -127,7 +189,8 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite {
             deadline: deadline,
             state: AlterfordTypes.ChallengeState.Open,
             evidenceHash: bytes32(0),
-            evidenceURI: ""
+            evidenceURI: "",
+            riskLevel: bondContext.categoryRisk
         });
         bondByChallenge[challengeId] = requiredBond;
         if (!IERC20(settlementToken)
@@ -176,7 +239,11 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite {
         whenNotPaused
     {
         Challenge storage challenge = challenges[challengeId];
-        if (challenge.state != AlterfordTypes.ChallengeState.Accepted) {
+        if (
+            challenge.state != AlterfordTypes.ChallengeState.Accepted
+                && challenge.state != AlterfordTypes.ChallengeState.EvidenceSubmitted
+                && challenge.state != AlterfordTypes.ChallengeState.Review
+        ) {
             revert AlterfordErrors.InvalidState();
         }
         if (msg.sender != challenge.executor && msg.sender != challenge.creator) {
@@ -213,41 +280,202 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite {
         }
     }
 
-    function resolveChallenge(
-        uint256 challengeId,
-        bool executorSucceeded,
-        bool slashCreatorBond,
-        bool slashExecutorBond,
-        bytes32 reasonHash
-    ) external nonReentrant onlyRole(RESOLVER_ROLE) {
+    function proposeResolution(uint256 challengeId, bool executorSucceeded, bytes32 evidenceHash)
+        external
+        whenNotPaused
+    {
+        Challenge storage challenge = challenges[challengeId];
+        if (
+            challenge.state != AlterfordTypes.ChallengeState.Accepted
+                && challenge.state != AlterfordTypes.ChallengeState.EvidenceSubmitted
+        ) revert AlterfordErrors.InvalidState();
+        if (msg.sender != challenge.creator && msg.sender != challenge.executor) {
+            revert AlterfordErrors.Unauthorized();
+        }
+        if (resolutionProposalByChallenge[challengeId].proposer != address(0)) {
+            revert AlterfordErrors.ResolutionAlreadyProposed();
+        }
+        if (executorSucceeded && evidenceHash == bytes32(0) && challenge.evidenceHash == bytes32(0))
+        {
+            revert AlterfordErrors.InvalidMetadataHash();
+        }
+
+        uint64 disputeDeadline = uint64(block.timestamp + resolutionWindowFor(challengeId));
+        resolutionProposalByChallenge[challengeId] = ResolutionProposal({
+            proposer: msg.sender,
+            executorSucceeded: executorSucceeded,
+            evidenceHash: evidenceHash == bytes32(0) ? challenge.evidenceHash : evidenceHash,
+            proposedAt: uint64(block.timestamp),
+            disputeDeadline: disputeDeadline
+        });
+        challenge.state = AlterfordTypes.ChallengeState.Review;
+        emit ChallengeResolutionProposed(
+            challengeId, msg.sender, executorSucceeded, evidenceHash, disputeDeadline
+        );
+    }
+
+    function confirmResolution(uint256 challengeId, bool executorSucceeded)
+        external
+        nonReentrant
+        whenNotPaused
+    {
+        Challenge storage challenge = challenges[challengeId];
+        ResolutionProposal storage proposal = resolutionProposalByChallenge[challengeId];
+        if (challenge.state != AlterfordTypes.ChallengeState.Review) {
+            revert AlterfordErrors.InvalidState();
+        }
+        if (proposal.proposer == address(0)) revert AlterfordErrors.ResolutionNotProposed();
+        if (
+            (msg.sender != challenge.creator && msg.sender != challenge.executor)
+                || msg.sender == proposal.proposer
+        ) revert AlterfordErrors.Unauthorized();
+        if (executorSucceeded != proposal.executorSucceeded) {
+            revert AlterfordErrors.ResolutionMismatch();
+        }
+
+        emit ChallengeResolutionConfirmed(challengeId, msg.sender, executorSucceeded);
+        _finalizeResolution(
+            challengeId,
+            challenge,
+            executorSucceeded,
+            false,
+            !executorSucceeded,
+            keccak256("MUTUAL_CONFIRMATION")
+        );
+    }
+
+    function disputeResolution(uint256 challengeId, bytes32 reasonHash)
+        external
+        nonReentrant
+        whenNotPaused
+    {
+        Challenge storage challenge = challenges[challengeId];
+        ResolutionProposal storage proposal = resolutionProposalByChallenge[challengeId];
+        if (challenge.state != AlterfordTypes.ChallengeState.Review) {
+            revert AlterfordErrors.InvalidState();
+        }
+        if (proposal.proposer == address(0)) revert AlterfordErrors.ResolutionNotProposed();
+        if (block.timestamp > proposal.disputeDeadline) {
+            revert AlterfordErrors.DisputeWindowExpired();
+        }
+        if (disputantByChallenge[challengeId] != address(0)) {
+            revert AlterfordErrors.DisputeAlreadyOpened();
+        }
+        if (
+            msg.sender != challenge.creator && msg.sender != challenge.executor
+                && !hasRole[WATCHER_ROLE][msg.sender]
+        ) revert AlterfordErrors.Unauthorized();
+        if (reasonHash == bytes32(0)) revert AlterfordErrors.InvalidIncidentHash();
+
+        uint256 bondAmount = disputeBondFor(challengeId);
+        disputantByChallenge[challengeId] = msg.sender;
+        disputeBondByChallenge[challengeId] = bondAmount;
+        challenge.state = AlterfordTypes.ChallengeState.Disputed;
+        if (!IERC20(challenge.settlementToken).transferFrom(msg.sender, address(this), bondAmount))
+        {
+            revert AlterfordErrors.TransferFailed();
+        }
+        emit BondLocked("ChallengeDispute", challengeId, msg.sender, bondAmount);
+        emit ChallengeResolutionDisputed(challengeId, msg.sender, bondAmount, reasonHash);
+    }
+
+    function finalizeUndisputed(uint256 challengeId) external nonReentrant whenNotPaused {
+        Challenge storage challenge = challenges[challengeId];
+        ResolutionProposal storage proposal = resolutionProposalByChallenge[challengeId];
+        if (challenge.state != AlterfordTypes.ChallengeState.Review) {
+            revert AlterfordErrors.InvalidState();
+        }
+        if (proposal.proposer == address(0)) revert AlterfordErrors.ResolutionNotProposed();
+        if (block.timestamp <= proposal.disputeDeadline) {
+            revert AlterfordErrors.DisputeWindowActive();
+        }
+        _finalizeResolution(
+            challengeId,
+            challenge,
+            proposal.executorSucceeded,
+            false,
+            !proposal.executorSucceeded,
+            keccak256("UNDISPUTED_FINALIZATION")
+        );
+    }
+
+    function resolveDispute(uint256 challengeId, bool executorSucceeded, bytes32 reasonHash)
+        external
+        nonReentrant
+        onlyRole(ARBITER_ROLE)
+    {
+        Challenge storage challenge = challenges[challengeId];
+        ResolutionProposal storage proposal = resolutionProposalByChallenge[challengeId];
+        if (challenge.state != AlterfordTypes.ChallengeState.Disputed) {
+            revert AlterfordErrors.InvalidState();
+        }
+        if (reasonHash == bytes32(0)) revert AlterfordErrors.InvalidIncidentHash();
+
+        bool disputeSucceeded = executorSucceeded != proposal.executorSucceeded;
+        _finalizeResolution(
+            challengeId, challenge, executorSucceeded, false, !executorSucceeded, reasonHash
+        );
+        _finalizeDisputeBond(
+            challengeId, challenge, disputeSucceeded, executorSucceeded, reasonHash
+        );
+        emit ChallengeDisputeResolved(challengeId, executorSucceeded, disputeSucceeded, reasonHash);
+    }
+
+    function resolveEarly(uint256 challengeId, bool executorSucceeded, bytes32 reasonHash)
+        external
+        nonReentrant
+        onlyRole(ARBITER_ROLE)
+    {
         Challenge storage challenge = challenges[challengeId];
         if (
             challenge.state != AlterfordTypes.ChallengeState.Accepted
                 && challenge.state != AlterfordTypes.ChallengeState.EvidenceSubmitted
                 && challenge.state != AlterfordTypes.ChallengeState.Review
         ) revert AlterfordErrors.InvalidState();
-        if (rewardFinalized[challengeId]) revert AlterfordErrors.AlreadyClaimed();
+        if (reasonHash == bytes32(0)) revert AlterfordErrors.InvalidIncidentHash();
+        emit ChallengeResolvedEarly(challengeId, executorSucceeded, reasonHash);
+        _finalizeResolution(
+            challengeId, challenge, executorSucceeded, false, !executorSucceeded, reasonHash
+        );
+    }
 
-        challenge.state = AlterfordTypes.ChallengeState.Resolved;
-        rewardFinalized[challengeId] = true;
+    function resolutionWindowFor(uint256 challengeId) public view returns (uint64) {
+        Challenge storage challenge = challenges[challengeId];
+        if (challenge.creator == address(0)) revert AlterfordErrors.InvalidState();
+        return _isHighRiskOrValue(challenge.rewardPool, challenge.riskLevel)
+            ? HIGH_RISK_RESOLUTION_WINDOW
+            : standardResolutionWindow;
+    }
 
-        uint256 rewardPayout;
-        uint256 adminFee;
-        uint256 creatorFee;
+    function disputeBondFor(uint256 challengeId) public view returns (uint256) {
+        Challenge storage challenge = challenges[challengeId];
+        if (challenge.creator == address(0)) revert AlterfordErrors.InvalidState();
+        uint256 amount = (challenge.rewardPool * 200) / AlterfordTypes.BPS_DENOMINATOR;
+        if (amount < MIN_DISPUTE_BOND) return MIN_DISPUTE_BOND;
+        if (amount > MAX_DISPUTE_BOND) return MAX_DISPUTE_BOND;
+        return amount;
+    }
 
-        if (executorSucceeded) {
-            (rewardPayout, adminFee, creatorFee) = _settleReward(challenge);
-        } else if (!IERC20(challenge.settlementToken)
-                .transfer(challenge.creator, challenge.rewardPool)) {
-            revert AlterfordErrors.TransferFailed();
-        }
-
-        _finalizeCreatorBond(challengeId, challenge, slashCreatorBond, reasonHash);
-        _finalizeExecutorBond(challengeId, challenge, slashExecutorBond, reasonHash);
-
-        address winner = executorSucceeded ? challenge.executor : challenge.creator;
-        emit ChallengeResolved(
-            challengeId, winner, executorSucceeded, rewardPayout, adminFee, creatorFee
+    function resolveChallenge(
+        uint256 challengeId,
+        bool executorSucceeded,
+        bool slashCreatorBond,
+        bool slashExecutorBond,
+        bytes32 reasonHash
+    ) external nonReentrant onlyRole(ARBITER_ROLE) {
+        Challenge storage challenge = challenges[challengeId];
+        if (
+            challenge.state != AlterfordTypes.ChallengeState.Accepted
+                && challenge.state != AlterfordTypes.ChallengeState.EvidenceSubmitted
+                && challenge.state != AlterfordTypes.ChallengeState.Review
+        ) revert AlterfordErrors.InvalidState();
+        _finalizeResolution(
+            challengeId,
+            challenge,
+            executorSucceeded,
+            slashCreatorBond,
+            slashExecutorBond,
+            reasonHash
         );
     }
 
@@ -261,6 +489,8 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite {
             challenge.state != AlterfordTypes.ChallengeState.Open
                 && challenge.state != AlterfordTypes.ChallengeState.Accepted
                 && challenge.state != AlterfordTypes.ChallengeState.EvidenceSubmitted
+                && challenge.state != AlterfordTypes.ChallengeState.Review
+                && challenge.state != AlterfordTypes.ChallengeState.Disputed
         ) revert AlterfordErrors.InvalidState();
         if (rewardFinalized[challengeId]) revert AlterfordErrors.AlreadyClaimed();
 
@@ -272,6 +502,7 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite {
         }
         _finalizeCreatorBond(challengeId, challenge, false, reasonHash);
         _finalizeExecutorBond(challengeId, challenge, false, reasonHash);
+        _returnDisputeBond(challengeId, challenge);
 
         emit ChallengeCancelled(challengeId, reasonHash);
     }
@@ -308,6 +539,8 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite {
             challenge.state != AlterfordTypes.ChallengeState.Open
                 && challenge.state != AlterfordTypes.ChallengeState.Accepted
                 && challenge.state != AlterfordTypes.ChallengeState.EvidenceSubmitted
+                && challenge.state != AlterfordTypes.ChallengeState.Review
+                && challenge.state != AlterfordTypes.ChallengeState.Disputed
         ) revert AlterfordErrors.InvalidState();
         if (offender != challenge.creator && offender != challenge.executor) {
             revert AlterfordErrors.InvalidState();
@@ -324,8 +557,89 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite {
 
         _finalizeCreatorBond(challengeId, challenge, offender == challenge.creator, reasonHash);
         _finalizeExecutorBond(challengeId, challenge, offender == challenge.executor, reasonHash);
+        _returnDisputeBond(challengeId, challenge);
 
         emit ChallengeFraudConfirmed(challengeId, offender, reasonHash);
+    }
+
+    function _finalizeResolution(
+        uint256 challengeId,
+        Challenge storage challenge,
+        bool executorSucceeded,
+        bool slashCreatorBond,
+        bool slashExecutorBond,
+        bytes32 reasonHash
+    ) private {
+        if (rewardFinalized[challengeId]) {
+            revert AlterfordErrors.AlreadyClaimed();
+        }
+
+        challenge.state = AlterfordTypes.ChallengeState.Resolved;
+        rewardFinalized[challengeId] = true;
+
+        uint256 rewardPayout = 0;
+        uint256 adminFee = 0;
+        uint256 creatorFee = 0;
+        if (executorSucceeded) {
+            (rewardPayout, adminFee, creatorFee) = _settleReward(challenge);
+        } else if (!IERC20(challenge.settlementToken)
+                .transfer(challenge.creator, challenge.rewardPool)) {
+            revert AlterfordErrors.TransferFailed();
+        }
+
+        _finalizeCreatorBond(challengeId, challenge, slashCreatorBond, reasonHash);
+        _finalizeExecutorBond(challengeId, challenge, slashExecutorBond, reasonHash);
+
+        address winner = executorSucceeded ? challenge.executor : challenge.creator;
+        emit ChallengeResolved(
+            challengeId, winner, executorSucceeded, rewardPayout, adminFee, creatorFee
+        );
+    }
+
+    function _finalizeDisputeBond(
+        uint256 challengeId,
+        Challenge storage challenge,
+        bool disputeSucceeded,
+        bool executorSucceeded,
+        bytes32 reasonHash
+    ) private {
+        uint256 amount = disputeBondByChallenge[challengeId];
+        address disputant = disputantByChallenge[challengeId];
+        disputeBondByChallenge[challengeId] = 0;
+        if (amount == 0 || disputant == address(0)) return;
+
+        if (disputeSucceeded) {
+            if (!IERC20(challenge.settlementToken).transfer(disputant, amount)) {
+                revert AlterfordErrors.TransferFailed();
+            }
+            emit BondReleased("ChallengeDispute", challengeId, disputant, amount);
+            return;
+        }
+
+        address beneficiary = executorSucceeded ? challenge.executor : challenge.creator;
+        if (!IERC20(challenge.settlementToken).transfer(beneficiary, amount)) {
+            revert AlterfordErrors.TransferFailed();
+        }
+        emit BondSlashed("ChallengeDispute", challengeId, amount, reasonHash);
+    }
+
+    function _returnDisputeBond(uint256 challengeId, Challenge storage challenge) private {
+        uint256 amount = disputeBondByChallenge[challengeId];
+        address disputant = disputantByChallenge[challengeId];
+        disputeBondByChallenge[challengeId] = 0;
+        if (amount == 0 || disputant == address(0)) return;
+        if (!IERC20(challenge.settlementToken).transfer(disputant, amount)) {
+            revert AlterfordErrors.TransferFailed();
+        }
+        emit BondReleased("ChallengeDispute", challengeId, disputant, amount);
+    }
+
+    function _isHighRiskOrValue(uint256 rewardPool, AlterfordTypes.RiskLevel risk)
+        private
+        pure
+        returns (bool)
+    {
+        return rewardPool >= HIGH_VALUE_THRESHOLD || risk >= AlterfordTypes.RiskLevel.High;
     }
 
     function _settleReward(Challenge storage challenge)

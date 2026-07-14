@@ -121,13 +121,16 @@ cast wallet import alterford-base-sepolia
 set FOUNDRY_ACCOUNT=alterford-base-sepolia
 set FOUNDRY_PASSWORD_FILE=C:\path\to\foundry-password.txt
 set BASE_SEPOLIA_RPC_URL=https://sepolia.base.org
+set SECURITY_COUNCIL_ADDRESS=<Safe multisig address>
+set COLD_WALLET_ADDRESS=<distinct cold wallet address>
+set BASESCAN_API_KEY=<Basescan API key>
 pnpm contracts:build
-pnpm deploy:base-sepolia
-pnpm contracts:export-abis
-pnpm web:env 84532
+pnpm release:base-sepolia
 ```
 
-The deployment is written to `deployments/84532.json`.
+The release reuses the existing settlement token and bond policy, deploys the three
+factories plus `BountyRecoveryVault`, exports ABIs, writes frontend/indexer env files,
+and verifies contracts. `PRIVATE_KEY` is not used for Base Sepolia.
 
 Run preflight before broadcasting:
 
@@ -159,8 +162,10 @@ Endpoints:
 - `GET /health`
 - `GET /markets`
 - `GET /markets/:id`
-- `GET /bets?marketId=1`
-- `GET /claims?marketId=1`
+- `GET /bounties` and `GET /bounties/:id`
+- `GET /challenges` and `GET /challenges/:id`
+- `GET /bets?marketId=1&user=0x...`
+- `GET /claims?marketId=1&user=0x...`
 - `GET /fees/:marketId`
 - `GET /bonds/:entityType/:entityId`
 
@@ -183,9 +188,9 @@ pnpm contracts:coverage
 pnpm security:all
 ```
 
-`security:slither` excludes `timestamp` and `divide-before-multiply` findings by design:
-markets, bounties, challenges, and subscriptions are time-gated products, and bond
-volume premiums are intentionally discrete tier steps. Other Slither findings fail
+`security:slither` audits application contracts while filtering vendored libraries,
+tests and deployment scripts. It excludes `timestamp`, `divide-before-multiply` and
+the OpenZeppelin role-getter naming convention by design. Other Slither findings fail
 the scan.
 
 Use strict security mode before production gates:
@@ -196,3 +201,34 @@ pnpm security:all
 ```
 
 The indexer exposes `/health`, `/metrics`, and `/snapshot` for observability and replay operations.
+
+## Static PWA Publication
+
+One relative-path production build is used for every static destination:
+
+```bash
+pnpm build:web:static
+```
+
+Set `VITE_INDEXER_URL` and `VITE_APP_URL` to public HTTPS endpoints for a live
+release. The static builder removes local/loopback values instead of embedding
+developer-machine addresses in an immutable publication.
+
+Fast IPFS releases use either Pinata or Fleek through environment variables:
+
+```bash
+set PINNING_PROVIDER=pinata
+set PINNING_TOKEN=<Pinata JWT>
+pnpm deploy:web:ipfs
+```
+
+Stable immutable releases use Arweave through Irys:
+
+```bash
+set IRYS_PRIVATE_KEY=<release wallet key>
+pnpm release:web:stable
+```
+
+The static preflight rejects loopback URLs, deploy credentials, source maps, and
+other environment-specific data before publication. RPC, indexer and wallet traffic
+remain network-only in the service worker and are never cached.

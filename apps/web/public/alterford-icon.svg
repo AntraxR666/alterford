@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Alterford">
+  <rect width="512" height="512" fill="#05070d"/>
+  <path d="M256 72 430 408h-92l-31-67H205l-31 67H82L256 72Zm0 155-27 58h54l-27-58Z" fill="#22d3a7"/>
+  <path d="M118 424h276" stroke="#f4f7fb" stroke-width="24" stroke-linecap="square"/>
+</svg>

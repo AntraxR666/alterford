@@ -13,3 +13,4 @@ out
 broadcast
 *.log
 slither-report.json
+.codex-remote-attachments

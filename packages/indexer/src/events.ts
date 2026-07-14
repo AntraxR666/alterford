@@ -1,4 +1,11 @@
-import type { Address, Category, ChallengeState, ModeAffinity } from "@alterford/sdk";
+import type {
+  Address,
+  BountyState,
+  Category,
+  ChallengeState,
+  ModeAffinity,
+  RiskLevel,
+} from "@alterford/sdk";
 
 export interface EventEnvelope<TType extends string, TPayload> {
   id: string;
@@ -10,7 +17,12 @@ export interface EventEnvelope<TType extends string, TPayload> {
   payload: TPayload;
 }
 
-export type BondEntityType = "Market" | "Bounty" | "Challenge" | "ChallengeExecutor";
+export type BondEntityType =
+  | "Market"
+  | "Bounty"
+  | "Challenge"
+  | "ChallengeExecutor"
+  | "ChallengeDispute";
 
 export type AlterfordEvent =
   | EventEnvelope<
@@ -69,6 +81,91 @@ export type AlterfordEvent =
       }
     >
   | EventEnvelope<
+      "SignedBetExecuted",
+      {
+        marketId: string;
+        bettor: Address;
+        relayer: Address;
+        outcome: number;
+        amount: bigint;
+        nonce: bigint;
+      }
+    >
+  | EventEnvelope<
+      "NonceInvalidated",
+      {
+        bettor: Address;
+        oldNonce: bigint;
+        newNonce: bigint;
+      }
+    >
+  | EventEnvelope<
+      "BountyCreated",
+      {
+        bountyId: string;
+        creator: Address;
+        rewardPool: bigint;
+        rewardEscrow?: bigint;
+        rulesHash: string;
+        settlementToken?: Address;
+        deadline?: bigint;
+        metadataURI?: string;
+        state?: BountyState;
+      }
+    >
+  | EventEnvelope<
+      "SubmissionCreated",
+      {
+        bountyId: string;
+        submitter: Address;
+        submissionHash: string;
+      }
+    >
+  | EventEnvelope<
+      "BountyResolved",
+      {
+        bountyId: string;
+        winners: Address[];
+        amounts: bigint[];
+      }
+    >
+  | EventEnvelope<
+      "BountyCancelled",
+      {
+        bountyId: string;
+        reasonHash: string;
+      }
+    >
+  | EventEnvelope<
+      "RecoveryVaultUpdated",
+      {
+        oldVault: Address;
+        newVault: Address;
+      }
+    >
+  | EventEnvelope<
+      "EmergencyBountyRecovered",
+      {
+        bountyId: string;
+        token: Address;
+        recoveryVault: Address;
+        rewardAmount: bigint;
+        bondAmount: bigint;
+        incidentHash: string;
+        securityAdmin: Address;
+      }
+    >
+  | EventEnvelope<
+      "EmergencyLiquidityRecovered",
+      {
+        token: Address;
+        coldWallet: Address;
+        amount: bigint;
+        incidentHash: string;
+        securityAdmin: Address;
+      }
+    >
+  | EventEnvelope<
       "ChallengeCreated",
       {
         challengeId: string;
@@ -79,6 +176,7 @@ export type AlterfordEvent =
         metadataURI?: string;
         deadline?: bigint;
         state?: ChallengeState;
+        riskLevel?: RiskLevel;
       }
     >
   | EventEnvelope<
@@ -130,6 +228,57 @@ export type AlterfordEvent =
       {
         challengeId: string;
         offender: Address;
+        reasonHash: string;
+      }
+    >
+  | EventEnvelope<
+      "ResolutionWindowUpdated",
+      {
+        oldWindow: bigint;
+        newWindow: bigint;
+      }
+    >
+  | EventEnvelope<
+      "ChallengeResolutionProposed",
+      {
+        challengeId: string;
+        proposer: Address;
+        executorSucceeded: boolean;
+        evidenceHash: string;
+        disputeDeadline: bigint;
+      }
+    >
+  | EventEnvelope<
+      "ChallengeResolutionConfirmed",
+      {
+        challengeId: string;
+        confirmer: Address;
+        executorSucceeded: boolean;
+      }
+    >
+  | EventEnvelope<
+      "ChallengeResolutionDisputed",
+      {
+        challengeId: string;
+        disputant: Address;
+        bondAmount: bigint;
+        reasonHash: string;
+      }
+    >
+  | EventEnvelope<
+      "ChallengeDisputeResolved",
+      {
+        challengeId: string;
+        executorSucceeded: boolean;
+        disputeSucceeded: boolean;
+        reasonHash: string;
+      }
+    >
+  | EventEnvelope<
+      "ChallengeResolvedEarly",
+      {
+        challengeId: string;
+        executorSucceeded: boolean;
         reasonHash: string;
       }
     >

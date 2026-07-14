@@ -88,6 +88,70 @@ export const marketFactoryAbi = [
   },
   {
     type: "function",
+    name: "placeBetBySig",
+    stateMutability: "nonpayable",
+    inputs: [
+      {
+        name: "authorization",
+        type: "tuple",
+        components: [
+          { name: "bettor", type: "address" },
+          { name: "marketId", type: "uint256" },
+          { name: "outcome", type: "uint8" },
+          { name: "amount", type: "uint256" },
+          { name: "nonce", type: "uint256" },
+          { name: "deadline", type: "uint256" },
+          { name: "authorizedRelayer", type: "address" },
+        ],
+      },
+      { name: "signature", type: "bytes" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "nonces",
+    stateMutability: "view",
+    inputs: [{ name: "bettor", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "invalidateNonce",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "newNonce", type: "uint256" }],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "hashBetAuthorization",
+    stateMutability: "view",
+    inputs: [
+      {
+        name: "authorization",
+        type: "tuple",
+        components: [
+          { name: "bettor", type: "address" },
+          { name: "marketId", type: "uint256" },
+          { name: "outcome", type: "uint8" },
+          { name: "amount", type: "uint256" },
+          { name: "nonce", type: "uint256" },
+          { name: "deadline", type: "uint256" },
+          { name: "authorizedRelayer", type: "address" },
+        ],
+      },
+    ],
+    outputs: [{ name: "", type: "bytes32" }],
+  },
+  {
+    type: "function",
+    name: "domainSeparatorV4",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "bytes32" }],
+  },
+  {
+    type: "function",
     name: "resolveMarket",
     stateMutability: "nonpayable",
     inputs: [
@@ -180,6 +244,27 @@ export const marketFactoryAbi = [
   },
   {
     type: "event",
+    name: "SignedBetExecuted",
+    inputs: [
+      { name: "marketId", type: "uint256", indexed: true },
+      { name: "bettor", type: "address", indexed: true },
+      { name: "relayer", type: "address", indexed: true },
+      { name: "outcome", type: "uint8", indexed: false },
+      { name: "amount", type: "uint256", indexed: false },
+      { name: "nonce", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "NonceInvalidated",
+    inputs: [
+      { name: "bettor", type: "address", indexed: true },
+      { name: "oldNonce", type: "uint256", indexed: false },
+      { name: "newNonce", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
     name: "BondCalculated",
     inputs: [
       { name: "entityType", type: "bytes32", indexed: true },
@@ -252,6 +337,26 @@ export const creationBondPolicyAbi = [
 export const challengeFactoryAbi = [
   {
     type: "function",
+    name: "challenges",
+    stateMutability: "view",
+    inputs: [{ name: "challengeId", type: "uint256" }],
+    outputs: [
+      { name: "creator", type: "address" },
+      { name: "executor", type: "address" },
+      { name: "settlementToken", type: "address" },
+      { name: "rulesHash", type: "bytes32" },
+      { name: "metadataURI", type: "string" },
+      { name: "liveStreamURI", type: "string" },
+      { name: "rewardPool", type: "uint256" },
+      { name: "deadline", type: "uint256" },
+      { name: "state", type: "uint8" },
+      { name: "evidenceHash", type: "bytes32" },
+      { name: "evidenceURI", type: "string" },
+      { name: "riskLevel", type: "uint8" },
+    ],
+  },
+  {
+    type: "function",
     name: "createChallenge",
     stateMutability: "nonpayable",
     inputs: [
@@ -307,6 +412,87 @@ export const challengeFactoryAbi = [
       { name: "evidenceURI", type: "string" },
       { name: "liveStreamURI", type: "string" },
     ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "proposeResolution",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "challengeId", type: "uint256" },
+      { name: "executorSucceeded", type: "bool" },
+      { name: "evidenceHash", type: "bytes32" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "confirmResolution",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "challengeId", type: "uint256" },
+      { name: "executorSucceeded", type: "bool" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "disputeResolution",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "challengeId", type: "uint256" },
+      { name: "reasonHash", type: "bytes32" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "finalizeUndisputed",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "challengeId", type: "uint256" }],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "resolveDispute",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "challengeId", type: "uint256" },
+      { name: "executorSucceeded", type: "bool" },
+      { name: "reasonHash", type: "bytes32" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "resolveEarly",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "challengeId", type: "uint256" },
+      { name: "executorSucceeded", type: "bool" },
+      { name: "reasonHash", type: "bytes32" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "resolutionWindowFor",
+    stateMutability: "view",
+    inputs: [{ name: "challengeId", type: "uint256" }],
+    outputs: [{ name: "", type: "uint64" }],
+  },
+  {
+    type: "function",
+    name: "disputeBondFor",
+    stateMutability: "view",
+    inputs: [{ name: "challengeId", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "setStandardResolutionWindow",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "nextWindow", type: "uint64" }],
     outputs: [],
   },
   {
@@ -413,6 +599,63 @@ export const challengeFactoryAbi = [
   },
   {
     type: "event",
+    name: "ResolutionWindowUpdated",
+    inputs: [
+      { name: "oldWindow", type: "uint64", indexed: false },
+      { name: "newWindow", type: "uint64", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "ChallengeResolutionProposed",
+    inputs: [
+      { name: "challengeId", type: "uint256", indexed: true },
+      { name: "proposer", type: "address", indexed: true },
+      { name: "executorSucceeded", type: "bool", indexed: false },
+      { name: "evidenceHash", type: "bytes32", indexed: false },
+      { name: "disputeDeadline", type: "uint64", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "ChallengeResolutionConfirmed",
+    inputs: [
+      { name: "challengeId", type: "uint256", indexed: true },
+      { name: "confirmer", type: "address", indexed: true },
+      { name: "executorSucceeded", type: "bool", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "ChallengeResolutionDisputed",
+    inputs: [
+      { name: "challengeId", type: "uint256", indexed: true },
+      { name: "disputant", type: "address", indexed: true },
+      { name: "bondAmount", type: "uint256", indexed: false },
+      { name: "reasonHash", type: "bytes32", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "ChallengeDisputeResolved",
+    inputs: [
+      { name: "challengeId", type: "uint256", indexed: true },
+      { name: "executorSucceeded", type: "bool", indexed: false },
+      { name: "disputeSucceeded", type: "bool", indexed: false },
+      { name: "reasonHash", type: "bytes32", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "ChallengeResolvedEarly",
+    inputs: [
+      { name: "challengeId", type: "uint256", indexed: true },
+      { name: "executorSucceeded", type: "bool", indexed: false },
+      { name: "reasonHash", type: "bytes32", indexed: false },
+    ],
+  },
+  {
+    type: "event",
     name: "BondCalculated",
     inputs: [
       { name: "entityType", type: "bytes32", indexed: true },
@@ -430,6 +673,209 @@ export const challengeFactoryAbi = [
       { name: "entityId", type: "uint256", indexed: true },
       { name: "creator", type: "address", indexed: true },
       { name: "amount", type: "uint256", indexed: false },
+    ],
+  },
+] as const;
+
+export const bountyFactoryAbi = [
+  {
+    type: "function",
+    name: "createBounty",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "settlementToken", type: "address" },
+      { name: "rewardPool", type: "uint256" },
+      { name: "deadline", type: "uint256" },
+      { name: "rulesHash", type: "bytes32" },
+      { name: "metadataURI", type: "string" },
+      {
+        name: "bondContext",
+        type: "tuple",
+        components: [
+          { name: "entityType", type: "uint8" },
+          { name: "mode", type: "uint8" },
+          { name: "creatorTier", type: "uint8" },
+          { name: "categoryRisk", type: "uint8" },
+          { name: "reputation", type: "uint8" },
+          { name: "expectedVolume", type: "uint256" },
+          { name: "disputeCount", type: "uint256" },
+          { name: "fraudCount", type: "uint256" },
+        ],
+      },
+    ],
+    outputs: [{ name: "bountyId", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "bounties",
+    stateMutability: "view",
+    inputs: [{ name: "bountyId", type: "uint256" }],
+    outputs: [
+      { name: "creator", type: "address" },
+      { name: "settlementToken", type: "address" },
+      { name: "rewardPool", type: "uint256" },
+      { name: "deadline", type: "uint256" },
+      { name: "rulesHash", type: "bytes32" },
+      { name: "metadataURI", type: "string" },
+      { name: "state", type: "uint8" },
+    ],
+  },
+  {
+    type: "function",
+    name: "rewardEscrowByBounty",
+    stateMutability: "view",
+    inputs: [{ name: "bountyId", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "recoveryVault",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "setRecoveryVault",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "nextRecoveryVault", type: "address" }],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "submit",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "bountyId", type: "uint256" },
+      { name: "submissionHash", type: "bytes32" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "resolveBounty",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "bountyId", type: "uint256" },
+      { name: "winners", type: "address[]" },
+      { name: "amounts", type: "uint256[]" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "cancelBounty",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "bountyId", type: "uint256" },
+      { name: "reasonHash", type: "bytes32" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "emergencyRecoverBounty",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "bountyId", type: "uint256" },
+      { name: "incidentHash", type: "bytes32" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "event",
+    name: "BountyCreated",
+    inputs: [
+      { name: "bountyId", type: "uint256", indexed: true },
+      { name: "creator", type: "address", indexed: true },
+      { name: "rewardPool", type: "uint256", indexed: false },
+      { name: "rulesHash", type: "bytes32", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "SubmissionCreated",
+    inputs: [
+      { name: "bountyId", type: "uint256", indexed: true },
+      { name: "submitter", type: "address", indexed: true },
+      { name: "submissionHash", type: "bytes32", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "BountyResolved",
+    inputs: [
+      { name: "bountyId", type: "uint256", indexed: true },
+      { name: "winners", type: "address[]", indexed: false },
+      { name: "amounts", type: "uint256[]", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "BountyCancelled",
+    inputs: [
+      { name: "bountyId", type: "uint256", indexed: true },
+      { name: "reasonHash", type: "bytes32", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "RecoveryVaultUpdated",
+    inputs: [
+      { name: "oldVault", type: "address", indexed: true },
+      { name: "newVault", type: "address", indexed: true },
+    ],
+  },
+  {
+    type: "event",
+    name: "EmergencyBountyRecovered",
+    inputs: [
+      { name: "bountyId", type: "uint256", indexed: true },
+      { name: "token", type: "address", indexed: true },
+      { name: "recoveryVault", type: "address", indexed: true },
+      { name: "rewardAmount", type: "uint256", indexed: false },
+      { name: "bondAmount", type: "uint256", indexed: false },
+      { name: "incidentHash", type: "bytes32", indexed: false },
+      { name: "securityAdmin", type: "address", indexed: false },
+    ],
+  },
+] as const;
+
+export const bountyRecoveryVaultAbi = [
+  {
+    type: "function",
+    name: "coldWallet",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "SECURITY_ADMIN_ROLE",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "bytes32" }],
+  },
+  {
+    type: "function",
+    name: "recoverToColdWallet",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "token", type: "address" },
+      { name: "amount", type: "uint256" },
+      { name: "incidentHash", type: "bytes32" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "event",
+    name: "EmergencyLiquidityRecovered",
+    inputs: [
+      { name: "token", type: "address", indexed: true },
+      { name: "coldWallet", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+      { name: "incidentHash", type: "bytes32", indexed: true },
+      { name: "securityAdmin", type: "address", indexed: false },
     ],
   },
 ] as const;

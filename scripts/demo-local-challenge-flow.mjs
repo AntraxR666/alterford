@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import {
   createPublicClient,
   createWalletClient,
+  decodeEventLog,
   encodeFunctionData,
   http,
   keccak256,
@@ -27,8 +28,10 @@ const executor = privateKeyToAccount(
 const deployment = JSON.parse(await readFile(resolve("deployments", "31337.json"), "utf8"));
 const tokenAbi = await readAbi("MockSettlementToken");
 const challengeAbi = await readAbi("ChallengeFactory");
+const bondPolicyAbi = await readAbi("CreationBondPolicy");
 const token = deployment.contracts.settlementToken.address;
 const challengeFactory = deployment.contracts.challengeFactory.address;
+const bondPolicy = deployment.contracts.creationBondPolicy.address;
 
 const publicClient = createPublicClient({ chain, transport: http(chain.rpcUrls.default.http[0]) });
 const creatorWallet = createWalletClient({ account: creator, chain, transport: http(chain.rpcUrls.default.http[0]) });
@@ -38,11 +41,23 @@ const chainId = await publicClient.getChainId();
 if (chainId !== 31337) throw new Error(`Expected Anvil chain 31337, got ${chainId}.`);
 
 const rewardPool = 100_000_000n;
-const creatorBond = 10_000_000n;
-const executorBond = 10_000_000n;
-const adminFee = 2_000_000n;
-const creatorFee = 1_500_000n;
-const executorPayout = rewardPool - adminFee - creatorFee;
+const bondContext = {
+  entityType: 2,
+  mode: 1,
+  creatorTier: 0,
+  categoryRisk: 2,
+  reputation: 0,
+  expectedVolume: rewardPool,
+  disputeCount: 1n,
+  fraudCount: 0n,
+};
+const [creatorBond] = await publicClient.readContract({
+  address: bondPolicy,
+  abi: bondPolicyAbi,
+  functionName: "previewBond",
+  args: [bondContext],
+});
+const executorBond = creatorBond;
 
 const creatorBalanceBefore = await balanceOf(creator.address);
 const executorBalanceBefore = await balanceOf(executor.address);
@@ -61,16 +76,7 @@ await tx(creatorWallet, challengeFactory, challengeAbi, "createChallenge", [
   keccak256(toBytes(`alterford-challenge-rules-${Date.now()}`)),
   "ipfs://alterford/demo-local-challenge",
   deadline,
-  {
-    entityType: 2,
-    mode: 1,
-    creatorTier: 0,
-    categoryRisk: 2,
-    reputation: 0,
-    expectedVolume: rewardPool,
-    disputeCount: 1n,
-    fraudCount: 0n,
-  },
+  bondContext,
 ]);
 
 const nextChallengeId = await publicClient.readContract({
@@ -90,13 +96,31 @@ await tx(executorWallet, challengeFactory, challengeAbi, "submitEvidence", [
   "ipfs://alterford/demo-local-challenge/evidence",
   "https://live.example/alterford-demo",
 ]);
-await tx(creatorWallet, challengeFactory, challengeAbi, "resolveChallenge", [
+const resolveHash = await tx(creatorWallet, challengeFactory, challengeAbi, "resolveChallenge", [
   challengeId,
   true,
   false,
   false,
   keccak256(toBytes("fulfilled")),
 ]);
+const resolveReceipt = await publicClient.getTransactionReceipt({ hash: resolveHash });
+const resolvedEvent = resolveReceipt.logs
+  .filter((log) => log.address.toLowerCase() === challengeFactory.toLowerCase())
+  .map((log) => {
+    try {
+      return decodeEventLog({ abi: challengeAbi, data: log.data, topics: log.topics });
+    } catch {
+      return null;
+    }
+  })
+  .find((event) => event?.eventName === "ChallengeResolved");
+if (!resolvedEvent || resolvedEvent.eventName !== "ChallengeResolved") {
+  throw new Error("ChallengeResolved event was not emitted.");
+}
+const { rewardPayout: executorPayout, adminFee, creatorFee } = resolvedEvent.args;
+if (executorPayout + adminFee + creatorFee !== rewardPool) {
+  throw new Error("Challenge settlement does not conserve the escrowed reward pool.");
+}
 
 const creatorBalance = await balanceOf(creator.address);
 const executorBalance = await balanceOf(executor.address);

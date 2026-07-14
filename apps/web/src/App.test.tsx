@@ -86,7 +86,12 @@ describe("Alterford PWA shell", () => {
     expect(screen.getByText("Ejecutor acepta con otra wallet y bloquea bond.")).toBeInTheDocument();
     expect(screen.getByText("La resolucion paga la recompensa menos fee variable de 4% a 10% o reembolsa si no se cumple.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Crear reto Underworld/i })).toBeDisabled();
-    expect(screen.getByText("Total a bloquear al crear: 110 aUSDT")).toBeInTheDocument();
+    expect(screen.getByText("Total a bloquear al crear: 108.25 aUSDT")).toBeInTheDocument();
+    expect(screen.getByText("Resolucion optimista")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Proponer: cumplido" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Confirmar: no cumplido" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Abrir disputa" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Finalizar sin disputa" })).toBeInTheDocument();
 
     await user.clear(screen.getByLabelText("Reto"));
     await user.type(screen.getByLabelText("Reto"), "Comer excremento por dinero");

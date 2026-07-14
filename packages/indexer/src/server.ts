@@ -20,6 +20,7 @@ export function startReadServer(
     if (url.pathname === "/metrics") return send(response, health ? health().metrics : {});
     if (url.pathname === "/snapshot") return send(response, snapshot ? snapshot() : {});
     if (url.pathname === "/markets") return send(response, api.listMarkets());
+    if (url.pathname === "/bounties") return send(response, api.listBounties());
     if (url.pathname === "/challenges") return send(response, api.listChallenges());
     if (url.pathname.startsWith("/markets/")) {
       return send(response, api.getMarket(url.pathname.split("/")[2] || ""));
@@ -27,9 +28,26 @@ export function startReadServer(
     if (url.pathname.startsWith("/challenges/")) {
       return send(response, api.getChallenge(url.pathname.split("/")[2] || ""));
     }
-    if (url.pathname === "/bets") return send(response, api.listBets(url.searchParams.get("marketId") || undefined));
+    if (url.pathname.startsWith("/bounties/")) {
+      return send(response, api.getBounty(url.pathname.split("/")[2] || ""));
+    }
+    if (url.pathname === "/bets") {
+      return send(
+        response,
+        api.listBets(
+          url.searchParams.get("marketId") || undefined,
+          url.searchParams.get("user") || undefined,
+        ),
+      );
+    }
     if (url.pathname === "/claims") {
-      return send(response, api.listClaims(url.searchParams.get("marketId") || undefined));
+      return send(
+        response,
+        api.listClaims(
+          url.searchParams.get("marketId") || undefined,
+          url.searchParams.get("user") || undefined,
+        ),
+      );
     }
     if (url.pathname.startsWith("/fees/")) return send(response, api.getFees(url.pathname.split("/")[2] || ""));
     if (url.pathname.startsWith("/bonds/")) {

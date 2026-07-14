@@ -39,13 +39,15 @@ Terminado:
 
 - Monorepo pnpm con `apps/web`, `packages/contracts`, `packages/sdk`, `packages/indexer`.
 - Contratos Solidity compilables y testeados con Foundry.
+- OpenZeppelin Contracts fijado en `5.6.1` mediante pnpm; Foundry resuelve la dependencia desde `node_modules` en clones limpios.
 - Dynamic bond policy implementada mediante `CreationBondPolicy`.
 - FeePolicy dinamica implementada en source: mercados pequenos `3.0%`, mercados estandar `3.5%`, mercados grandes `2.5%`, mercados muy grandes `2.0%`; retos platform-only `10%`, `8%`, `6%` o `4%`.
 - Deploy local Anvil funcional.
 - Deploy Base Sepolia funcional mediante Foundry Keystore y `forge script --account`.
 - `PRIVATE_KEY` eliminado del flujo Base Sepolia. Solo queda como compatibilidad opcional para Anvil/local.
-- Deployment real en Base Sepolia actualizado el `2026-07-05T04:01:55.141Z`.
-- Cinco contratos core desplegados y verificados en Basescan.
+- Deployment Phase 1 real en Base Sepolia actualizado el `2026-07-14T10:42:43.348Z`.
+- Seis contratos desplegados y verificados en BaseScan, incluido `BountyRecoveryVault`.
+- Consejo de seguridad desplegado como Safe `2-de-2`, separado de la cold wallet.
 - ABIs exportadas.
 - Frontend env generado para Base Sepolia.
 - Indexer env generado para Base Sepolia.
@@ -53,6 +55,8 @@ Terminado:
 - Verificacion de contratos operativa.
 - Indexer persistente implementado con store JSON, reorg handling, snapshots y endpoints read-only.
 - Frontend React/Vite conectado a wagmi/viem/WalletConnect/Reown, con soporte Vanilla/Underworld.
+- Indexer publico en Railway con `CONFIRMATIONS=6`, RPC privado y volumen persistente en `/data`.
+- PWA estatica publicada en IPFS mediante Pinata y validada desde dos gateways independientes.
 - Tests TypeScript y Solidity pasando en la ultima verificacion registrada.
 - Smoke E2E Base Sepolia completado con mercado `2`: mint, approve, create market, bet YES, bet NO, resolve y claim.
 - Smoke E2E Base Sepolia completado con reto `1`: mint, approve, create challenge, cancel y refund de bond/recompensa.
@@ -61,7 +65,6 @@ Terminado:
 No terminado o pendiente:
 
 - Ejecutar prueba E2E manual desde navegador con MetaMask/Reown: connect wallet -> approve -> create market -> bet -> resolve -> claim/refund.
-- Publicar frontend en entorno publico PWA/IPFS/Fleek/Pinata.
 - Rotar API key de Basescan/Etherscan.
 - Crear wallet nueva para mainnet.
 - Ejecutar security scans estrictos con Slither, Echidna y Mythril instalados y `SECURITY_STRICT=1`.
@@ -149,23 +152,31 @@ RPC: `https://sepolia.base.org`.
 Explorer: `https://sepolia.basescan.org`.
 Deployer: `0x6Bb15228CFC4CA9f39FD76EA1dbF98A9E53be772`.
 Deployment manifest: `deployments/84532.json`.
-Fecha de deploy: `2026-07-05T04:01:55.141Z`.
+Fecha de deploy: `2026-07-14T10:42:43.348Z`.
 
 | Modulo | Address | Tx hash | Verificacion |
 |---|---:|---:|---|
 | MockSettlementToken | `0x13e136d971ab620d94213725bd5e14944f71427c` | `0xd5e2271a70ad4e44dbe9e06ab8d52b89302f5660aaab128ec770f8914980f14c` | Verificado |
 | CreationBondPolicy | `0x7b881b34eb2319d4e52b29f5cb703a2d6a7c7278` | `0xcba5f9c6be7725954861a433c95ebdbe5e958ce2842dd3f9d375567797784694` | Verificado |
-| MarketFactory | `0xff999c9dce00afaed5c5ea37b5ff2b52f59b0954` | `0xe4599391ed9118ebf8e872883dde50c5d6f29339385c9951641b167ec0fae7d3` | Verificado |
-| BountyFactory | `0xd1aa1350f7c6d75171eb1335064a2eb5738e0fca` | `0x76459f30157d353b6e2476b46ef5103e61f1b6a00767ff5c29c57898f2542568` | Verificado |
-| ChallengeFactory | `0xa1e9487ab3f5b55766e7908f4113d9a61a213996` | `0x8db2a09a3c3fe42ca60e7f876ed87202e55720a006e82a2b8fe2a0df9f6ce5fc` | Verificado |
+| MarketFactory | `0xa2ea9723c545a50336aea8e64a0f6b9594a86978` | `0x0307cc8c89715c41804e514404628bd86f43e73745d25ae6fdf02f10fd3ec59e` | Verificado |
+| BountyFactory | `0x0643e5f35c826eb64ac96dc054933d11819507c2` | `0x94f837bf4b521efa55e4e92b3ed99483d3496cf3d0a48a7237151bd297b024fb` | Verificado |
+| ChallengeFactory | `0x5dea84f8d244c14860134131513b8fc2db24775b` | `0x9d96fbfe06b8252ac40e4c579ac324e5bfcc20c7b2642263e666f569c5cfdf4b` | Verificado |
+| BountyRecoveryVault | `0x3af298012953e4cc3cfc5d3942059842041fcfab` | `0x004e43cc496bc7fd4bc69857eb307f393e550a1026b959d057aaaa6a614c58b0` | Verificado |
+
+Gobernanza de emergencia Phase 1:
+
+- Safe `2-de-2`: `0xcDe52A6D1c4bb32Aed4FA5C4489AbF32e237620b`.
+- Cold wallet: `0xec463C1CB5a8D4bf21B75505DAEccBC12C6E3bb7`.
+- El Safe posee `SECURITY_ADMIN_ROLE`; el vault solo puede enrutar fondos a la cold wallet configurada.
 
 Bytecode confirmado por RPC despues del deploy:
 
 - MockSettlementToken: `1477` bytes.
 - CreationBondPolicy: `4078` bytes.
-- MarketFactory: `8463` bytes.
-- BountyFactory: `4742` bytes.
-- ChallengeFactory: `10063` bytes.
+- MarketFactory: `11040` bytes.
+- BountyFactory: `7217` bytes.
+- ChallengeFactory: `16435` bytes.
+- BountyRecoveryVault: `1636` bytes.
 
 ## Wallet Oficial De Testnet
 
@@ -391,6 +402,11 @@ Estado UX:
 - High roller: `50`, `250`, `1000`, `ALL IN`.
 - Balance, allowance, approve, create market, bet, resolve, claim/refund integrados a hooks web3.
 - Frontend usa direcciones desde env generado.
+- Build estatico agnostico publicado mediante Pinata.
+- CID: `bafybeiebkyk5z3mjqjkwl5cnrb6fbx25cx2qrh6pfulwq7npt3n5ozqun4`.
+- Gateway primario de prueba: `https://ipfs.io/ipfs/bafybeiebkyk5z3mjqjkwl5cnrb6fbx25cx2qrh6pfulwq7npt3n5ozqun4/`.
+- Gateway alternativo: `https://bafybeiebkyk5z3mjqjkwl5cnrb6fbx25cx2qrh6pfulwq7npt3n5ozqun4.ipfs.dweb.link/`.
+- Manifest, service worker, bundle e indexer publico validados desde ambos gateways.
 
 Archivos clave:
 
@@ -406,8 +422,7 @@ Archivos clave:
 Pendiente frontend:
 
 - Prueba manual con MetaMask en Base Sepolia real usando el deployment actual.
-- Configurar `VITE_APP_URL` real antes de publicar.
-- Publicar build PWA.
+- Asignar dominio/ENS definitivo; mientras tanto WalletConnect usa el origen del gateway en runtime.
 - Revisar code splitting por warnings de chunks grandes.
 
 ## SDK
@@ -435,9 +450,11 @@ Estado:
 - Implementado en TypeScript.
 - Soporta listener, projections, persistent store, reorg checks, snapshots y API read-only.
 - Base Sepolia env generado en `deployments/84532.indexer.env`.
-- Base Sepolia usa `START_BLOCK=43727910`, bloque inicial del deployment actual, para no escanear desde genesis.
-- El RPC publico de Base Sepolia limita `eth_getLogs` a rangos de 2000 bloques; el listener soporta chunking con `MAX_LOG_BLOCK_RANGE=2000`.
-- Smoke real indexado desde Base Sepolia con `CONFIRMATIONS=0` para validacion inmediata.
+- Servicio publico: `https://web-production-73e1b.up.railway.app`.
+- Base Sepolia usa `START_BLOCK=44128734`, bloque inicial del deployment Phase 1.
+- El plan RPC actual limita `eth_getLogs` a cinco bloques; Railway usa `MAX_LOG_BLOCK_RANGE=5`.
+- Opera con `CONFIRMATIONS=6`, polling de 12 segundos y volumen persistente Railway en `/data`.
+- Persistencia verificada mediante redeploy: journal y cursor sobrevivieron al reinicio, cadena `84532`, cero errores.
 
 Endpoints definidos en runbook:
 
@@ -450,27 +467,18 @@ Endpoints definidos en runbook:
 - `/claims?marketId=1`
 - `/fees/:marketId`
 - `/bonds/:entityType/:entityId`
+- `/bounties`
+- `/challenges`
 
 Pendiente indexer:
 
-- Ejecutar operacion prolongada con `CONFIRMATIONS=6` para modo testnet normal.
-- Persistir y respaldar `data/alterford-84532-43727910.json`.
+- Configurar backup externo del volumen Railway antes de produccion mainnet.
 
-Ultimo smoke indexado:
+Estado del nuevo deployment al cierre:
 
-- Market id: `2`.
-- Market state: `Resolved`.
-- Bond requerido: `500000` aUSDT (`0.5` aUSDT), reasonFlags `1`.
-- Bets: `1000000` aUSDT en YES y `1000000` aUSDT en NO.
-- Winning outcome: `0`.
-- Admin fee: `20000` aUSDT.
-- Creator fee: `10000` aUSDT.
-- Reward claimed: `1970000` aUSDT.
-- MarketCreated tx: `0xad1da91b00bdf8d6cc993585d5bd226b8a80491da22c54b4641139633a938381`.
-- Bet YES tx: `0x34ea878c9f2c56b4403c77399bb762b4d4c15d2d7849fd8f4b27a6a308105032`.
-- Bet NO tx: `0x8f88d079fea7516f0a1eb2316b6ea653b552504f09afdee0614fca1de07d429b`.
-- Resolve tx: `0x70e1b82a0f4e7a1032fb2aa868aeafbd4b9bfad156413d21cfbce002ecc85857`.
-- Claim tx: `0xd19e727ea0655dbd8e2f735c7397cdc104e407f4c66f043b93fc6afaad0ca354`.
+- Cursor procesado por encima del bloque de deployment y actualizado automaticamente.
+- Journal persistente inicializado con el evento administrativo del nuevo deployment.
+- Mercados, bounties y challenges nuevos comienzan vacios; los datos ficticios del deployment anterior no se migraron.
 
 ## Seguridad
 
@@ -490,9 +498,12 @@ Ultima verificacion conocida:
 - `pnpm test`: paso.
 - `pnpm build`: paso con warnings de bundle.
 - `forge build`: paso con warnings de timestamp.
-- `forge test`: paso, `32/32`.
+- `forge test`: paso, `40/40`.
+- `pnpm test`: paso, `55/55`.
+- `pnpm test:web:pipeline`: paso, `36/36`.
+- Slither: paso sobre 73 contratos y 98 detectores, `0` resultados.
 - `pnpm web:env:check 84532`: paso.
-- Verificacion Basescan: paso para 5/5 contratos del deployment actual.
+- Verificacion BaseScan: paso para 6/6 contratos del deployment actual.
 - Smoke E2E Base Sepolia on-chain: paso.
 - Smoke reto Base Sepolia on-chain: paso con create challenge, cancel y bond released.
 - Indexer Base Sepolia con eventos reales: paso con `/health`, `/snapshot`, `/markets`, `/bets`, `/claims`, `/fees` y `/bonds`.
@@ -502,6 +513,7 @@ Warnings conocidos:
 - Foundry reporta `block.timestamp` en comparaciones de deadlines, lock times, resolution times y subscriptions. Aceptado para MVP, debe revisarse en auditoria.
 - Vite reporta chunks mayores a 500 kB. No bloquea MVP, pero debe optimizarse antes de produccion publica.
 - Tests frontend pueden mostrar warnings de WalletConnect/Reown si se usa project id de desarrollo o metadata local.
+- Echidna y Mythril no estan instalados en el entorno actual; sus scans fueron omitidos y siguen pendientes antes de mainnet.
 
 ## Decisiones Historicas
 
@@ -521,19 +533,19 @@ Antes de declarar production ready:
 - Crear wallet mainnet nueva y no expuesta.
 - Rotar API key de Basescan/Etherscan.
 - Confirmar que `.env.local`, password files y keystores no estan versionados.
-- Ejecutar `pnpm typecheck`.
-- Ejecutar `pnpm test`.
-- Ejecutar `pnpm build`.
+- [x] Ejecutar `pnpm typecheck`.
+- [x] Ejecutar `pnpm test`.
+- [x] Ejecutar `pnpm build`.
 - Ejecutar `forge fmt --check`.
 - Ejecutar `forge build`.
-- Ejecutar `forge test`.
+- [x] Ejecutar `forge test`.
 - Ejecutar `forge coverage --ir-minimum`.
 - Ejecutar `SECURITY_STRICT=1 pnpm security:all`.
 - Completar flujo manual Base Sepolia desde navegador: connect wallet, approve, create market, bet, resolve, claim/refund.
-- Ejecutar indexer Base Sepolia en modo normal con `CONFIRMATIONS=6` y confirmar `/health`, `/snapshot`, `/markets`.
-- Validar reorg/replay con store persistente.
+- [x] Ejecutar indexer Base Sepolia en modo normal con `CONFIRMATIONS=6` y confirmar `/health`, `/snapshot`, `/markets`.
+- [x] Validar persistencia del store mediante redeploy controlado.
 - Revisar alertas y runbook operativo.
-- Publicar frontend PWA en entorno staging.
+- [x] Publicar frontend PWA en IPFS staging.
 - Verificar wallets reales: MetaMask, Trust Wallet, Binance Web3 Wallet y WalletConnect.
 - Revisar UX mobile Android/iOS/Huawei sin GMS.
 - Obtener auditoria externa.

@@ -55,6 +55,15 @@ const verifications = [
       [deployer, contracts.creationBondPolicy.address],
     ),
   },
+  {
+    name: "BountyRecoveryVault",
+    address: contracts.bountyRecoveryVault.address,
+    target: "src/security/BountyRecoveryVault.sol:BountyRecoveryVault",
+    constructorArgs: encodeAbiParameters(
+      [{ type: "address" }, { type: "address" }],
+      [deployment.securityCouncil, deployment.coldWallet],
+    ),
+  },
 ];
 
 let failures = 0;

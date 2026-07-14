@@ -5,6 +5,8 @@ const chainId = process.env.CHAIN_ID || process.argv[2] || "31337";
 const deployment = JSON.parse(await readFile(resolve("deployments", `${chainId}.json`), "utf8"));
 const marketFactory = deployment.contracts?.marketFactory?.address;
 const challengeFactory = deployment.contracts?.challengeFactory?.address;
+const bountyFactory = deployment.contracts?.bountyFactory?.address;
+const bountyRecoveryVault = deployment.contracts?.bountyRecoveryVault?.address;
 
 if (!marketFactory) {
   throw new Error(`deployments/${chainId}.json is missing contracts.marketFactory.address`);
@@ -21,7 +23,11 @@ const env = [
   `CHAIN_ID=${deployment.chainId}`,
   `RPC_URL=${deployment.rpcUrl}`,
   `MARKET_FACTORY_ADDRESS=${marketFactory}`,
+  ...(bountyFactory ? [`BOUNTY_FACTORY_ADDRESS=${bountyFactory}`] : []),
   ...(challengeFactory ? [`CHALLENGE_FACTORY_ADDRESS=${challengeFactory}`] : []),
+  ...(bountyRecoveryVault
+    ? [`BOUNTY_RECOVERY_VAULT_ADDRESS=${bountyRecoveryVault}`]
+    : []),
   `INDEXER_STORE=${storePath}`,
   `CONFIRMATIONS=${confirmations}`,
   ...(startBlock ? [`START_BLOCK=${startBlock}`] : []),

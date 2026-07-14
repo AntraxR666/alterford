@@ -43,6 +43,84 @@
   },
   {
     "type": "function",
+    "name": "HIGH_RISK_RESOLUTION_WINDOW",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "HIGH_VALUE_THRESHOLD",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_DISPUTE_BOND",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_STANDARD_RESOLUTION_WINDOW",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MIN_DISPUTE_BOND",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MIN_STANDARD_RESOLUTION_WINDOW",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "MODULE_ROLE",
     "inputs": [],
     "outputs": [
@@ -70,6 +148,19 @@
   {
     "type": "function",
     "name": "RESOLVER_ROLE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "WATCHER_ROLE",
     "inputs": [],
     "outputs": [
       {
@@ -245,6 +336,11 @@
         "name": "evidenceURI",
         "type": "string",
         "internalType": "string"
+      },
+      {
+        "name": "riskLevel",
+        "type": "uint8",
+        "internalType": "enum AlterfordTypes.RiskLevel"
       }
     ],
     "stateMutability": "view"
@@ -267,6 +363,24 @@
         "name": "reasonHash",
         "type": "bytes32",
         "internalType": "bytes32"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "confirmResolution",
+    "inputs": [
+      {
+        "name": "challengeId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "executorSucceeded",
+        "type": "bool",
+        "internalType": "bool"
       }
     ],
     "outputs": [],
@@ -360,6 +474,81 @@
   },
   {
     "type": "function",
+    "name": "disputantByChallenge",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "disputeBondByChallenge",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "disputeBondFor",
+    "inputs": [
+      {
+        "name": "challengeId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "disputeResolution",
+    "inputs": [
+      {
+        "name": "challengeId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "reasonHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "executorBondByChallenge",
     "inputs": [
       {
@@ -376,6 +565,19 @@
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "finalizeUndisputed",
+    "inputs": [
+      {
+        "name": "challengeId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -436,6 +638,29 @@
   },
   {
     "type": "function",
+    "name": "proposeResolution",
+    "inputs": [
+      {
+        "name": "challengeId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "executorSucceeded",
+        "type": "bool",
+        "internalType": "bool"
+      },
+      {
+        "name": "evidenceHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "releaseBond",
     "inputs": [
       {
@@ -446,6 +671,64 @@
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "resolutionProposalByChallenge",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "proposer",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "executorSucceeded",
+        "type": "bool",
+        "internalType": "bool"
+      },
+      {
+        "name": "evidenceHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "proposedAt",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "disputeDeadline",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "resolutionWindowFor",
+    "inputs": [
+      {
+        "name": "challengeId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -468,6 +751,52 @@
       },
       {
         "name": "slashExecutorBond",
+        "type": "bool",
+        "internalType": "bool"
+      },
+      {
+        "name": "reasonHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "resolveDispute",
+    "inputs": [
+      {
+        "name": "challengeId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "executorSucceeded",
+        "type": "bool",
+        "internalType": "bool"
+      },
+      {
+        "name": "reasonHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "resolveEarly",
+    "inputs": [
+      {
+        "name": "challengeId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "executorSucceeded",
         "type": "bool",
         "internalType": "bool"
       },
@@ -537,6 +866,19 @@
   },
   {
     "type": "function",
+    "name": "setStandardResolutionWindow",
+    "inputs": [
+      {
+        "name": "nextWindow",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "slashBond",
     "inputs": [
       {
@@ -552,6 +894,19 @@
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "standardResolutionWindow",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -832,6 +1187,37 @@
   },
   {
     "type": "event",
+    "name": "ChallengeDisputeResolved",
+    "inputs": [
+      {
+        "name": "challengeId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "executorSucceeded",
+        "type": "bool",
+        "indexed": false,
+        "internalType": "bool"
+      },
+      {
+        "name": "disputeSucceeded",
+        "type": "bool",
+        "indexed": false,
+        "internalType": "bool"
+      },
+      {
+        "name": "reasonHash",
+        "type": "bytes32",
+        "indexed": false,
+        "internalType": "bytes32"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "ChallengeEvidenceSubmitted",
     "inputs": [
       {
@@ -919,6 +1305,99 @@
   },
   {
     "type": "event",
+    "name": "ChallengeResolutionConfirmed",
+    "inputs": [
+      {
+        "name": "challengeId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "confirmer",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "executorSucceeded",
+        "type": "bool",
+        "indexed": false,
+        "internalType": "bool"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ChallengeResolutionDisputed",
+    "inputs": [
+      {
+        "name": "challengeId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "disputant",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "bondAmount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "reasonHash",
+        "type": "bytes32",
+        "indexed": false,
+        "internalType": "bytes32"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ChallengeResolutionProposed",
+    "inputs": [
+      {
+        "name": "challengeId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "proposer",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "executorSucceeded",
+        "type": "bool",
+        "indexed": false,
+        "internalType": "bool"
+      },
+      {
+        "name": "evidenceHash",
+        "type": "bytes32",
+        "indexed": false,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "disputeDeadline",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "ChallengeResolved",
     "inputs": [
       {
@@ -962,6 +1441,31 @@
   },
   {
     "type": "event",
+    "name": "ChallengeResolvedEarly",
+    "inputs": [
+      {
+        "name": "challengeId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "executorSucceeded",
+        "type": "bool",
+        "indexed": false,
+        "internalType": "bool"
+      },
+      {
+        "name": "reasonHash",
+        "type": "bytes32",
+        "indexed": false,
+        "internalType": "bytes32"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "Paused",
     "inputs": [
       {
@@ -969,6 +1473,25 @@
         "type": "address",
         "indexed": true,
         "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ResolutionWindowUpdated",
+    "inputs": [
+      {
+        "name": "oldWindow",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      },
+      {
+        "name": "newWindow",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
       }
     ],
     "anonymous": false
@@ -1023,12 +1546,37 @@
   },
   {
     "type": "error",
+    "name": "ChallengeDurationTooLong",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "DisputeAlreadyOpened",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "DisputeWindowActive",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "DisputeWindowExpired",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "InvalidAmount",
     "inputs": []
   },
   {
     "type": "error",
     "name": "InvalidBondPolicy",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidIncidentHash",
     "inputs": []
   },
   {
@@ -1054,6 +1602,21 @@
   {
     "type": "error",
     "name": "Paused",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ResolutionAlreadyProposed",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ResolutionMismatch",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ResolutionNotProposed",
     "inputs": []
   },
   {
