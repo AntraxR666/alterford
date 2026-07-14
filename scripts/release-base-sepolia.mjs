@@ -7,6 +7,7 @@ const steps = [
   ["web-env", "pnpm", ["web:env", "84532"]],
   ["web-env-check", "pnpm", ["web:env:check", "84532"]],
   ["indexer-env", "pnpm", ["indexer:env", "84532"]],
+  ["gateway-env", "pnpm", ["gateway:env", "84532"]],
 ];
 
 if (process.env.BASESCAN_API_KEY || process.env.ETHERSCAN_API_KEY) {

@@ -1,7 +1,7 @@
 # Libro Maestro de Alterford
 
-Estado: fuente de verdad operativa del proyecto Alterford v1.1.
-Ultima actualizacion: 2026-07-03.
+Estado: fuente de verdad operativa del proyecto Alterford v1.2 en desarrollo, compatible con la Constitucion v1.1.
+Ultima actualizacion: 2026-07-14.
 Repositorio local: `C:\Users\Windows 11 Pro\Documents\apuestas`.
 
 Este documento consolida el estado real del proyecto, decisiones vigentes, arquitectura, contratos, despliegues, variables, comandos oficiales y pendientes. Debe actualizarse cada vez que cambien contratos, direcciones, red, arquitectura, scripts, credenciales no sensibles, checklist de produccion o estado de lanzamiento.
@@ -35,6 +35,8 @@ Principios no negociables:
 
 Alterford v1.1 esta en estado MVP on-chain desplegado en Base Sepolia.
 
+La Fase 1 de Alterford v1.2 esta desplegada. La Fase 2 de conversion y abstraccion esta implementada y verificada localmente, pero aun no esta desplegada en Base Sepolia.
+
 Terminado:
 
 - Monorepo pnpm con `apps/web`, `packages/contracts`, `packages/sdk`, `packages/indexer`.
@@ -61,6 +63,14 @@ Terminado:
 - Smoke E2E Base Sepolia completado con mercado `2`: mint, approve, create market, bet YES, bet NO, resolve y claim.
 - Smoke E2E Base Sepolia completado con reto `1`: mint, approve, create challenge, cancel y refund de bond/recompensa.
 - Indexer Base Sepolia validado contra eventos reales del deployment actual: `2` markets, `3` bets, `1` claim, `3` bonds y `0` errores.
+- `AlterfordForwarder` EIP-2771 y `ChallengeFactory` con `_msgSender()` implementados, con nonce, deadline, domain separator dinamico y replay protection de OpenZeppelin.
+- Gateway server-only implementado con politica allowlist de acciones, simulacion previa, limites por wallet/IP/global, idempotencia y ledger persistente atomico.
+- Integracion vigente de Gelato Gasless (`@gelatocloud/gasless`), sin exponer `GELATO_API_KEY` al navegador.
+- MetaMask Embedded Wallets/Web3Auth integrado como conector social MPC opcional sin reemplazar MetaMask, Trust, Binance Web3 Wallet ni WalletConnect.
+- Fiat on-ramp Transak implementado mediante sesiones de backend de un solo uso; las credenciales privadas no entran al build estatico.
+- Las ocho acciones core permitidas de retos usan firma EIP-712 y relay patrocinado cuando el gateway esta activo; conservan ejecucion directa cuando no esta configurado.
+- Gateway Docker construido y health/config comprobados.
+- Verificacion Fase 2 local: `43` tests Foundry, `79` tests de paquetes TS y `36` tests de pipeline web, todos aprobados.
 
 No terminado o pendiente:
 
@@ -70,6 +80,12 @@ No terminado o pendiente:
 - Ejecutar security scans estrictos con Slither, Echidna y Mythril instalados y `SECURITY_STRICT=1`.
 - Completar auditoria externa antes de Base Mainnet.
 - Revisar bundle splitting del frontend; Vite advierte chunks mayores a 500 kB.
+- Reimportar la wallet testnet en Foundry Keystore: el preflight actual no encuentra `FOUNDRY_ACCOUNT`; existe el password file antiguo, pero no una cuenta visible en el keystore estandar.
+- Exportar `SECURITY_COUNCIL_ADDRESS`, `COLD_WALLET_ADDRESS`, `FOUNDRY_ACCOUNT` y `FOUNDRY_PASSWORD_FILE` para el siguiente release.
+- Obtener/configurar `VITE_WEB3AUTH_CLIENT_ID` para activar login social.
+- Obtener/configurar `GELATO_API_KEY` para activar patrocinio de gas.
+- Obtener/configurar credenciales Transak staging/production y dominio autorizado para activar fiat on-ramp.
+- Redesplegar Fase 2 en Base Sepolia. El deployment actual no contiene `AlterfordForwarder` y su `ChallengeFactory` no confia en el forwarder nuevo.
 
 Descartado o reemplazado:
 
@@ -85,6 +101,7 @@ Capas:
 - SDK: TypeScript helpers, economics, bond policy, ABIs y web3 utilities.
 - Frontend: React, Vite, TailwindCSS, Zustand, wagmi, viem, WalletConnect/Reown.
 - Indexer: TypeScript service con listener, projections, persistent store, reorg support, API HTTP y observability.
+- Gateway: servicio TypeScript separado para relay EIP-2771, politicas de patrocinio y sesiones fiat; el indexer permanece read-only.
 - Scripts: deploy, preflight, release, verify, export ABIs, env writers, local demo y security scans.
 
 Modulos constitucionales:
@@ -124,6 +141,7 @@ packages/
   contracts/                   Solidity + Foundry
   sdk/                         TypeScript SDK
   indexer/                     Event indexer + read API
+  gateway/                     Gasless relay policy + fiat session API
 deployments/                   Deployment manifests, envs y ABIs
 docs/                          Constitucion, runbook y este libro maestro
 scripts/                       Deploy, verify, env, demo, security

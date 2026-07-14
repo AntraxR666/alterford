@@ -1,0 +1,19 @@
+{
+  "name": "@alterford/gateway",
+  "version": "1.2.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/cli.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json --emitDeclarationOnly false",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/cli.js"
+  },
+  "dependencies": {
+    "@alterford/sdk": "workspace:*",
+    "@gelatocloud/gasless": "0.0.12",
+    "viem": "^2.45.0"
+  }
+}

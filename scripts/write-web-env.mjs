@@ -10,12 +10,18 @@ const env = [
   `VITE_LOCAL_RPC_URL=${deployment.chainId === 31337 ? deployment.rpcUrl : ""}`,
   `VITE_BASE_SEPOLIA_RPC_URL=${deployment.chainId === 84532 ? deployment.rpcUrl : "https://sepolia.base.org"}`,
   `VITE_WALLETCONNECT_PROJECT_ID=${process.env.VITE_WALLETCONNECT_PROJECT_ID || ""}`,
+  `VITE_WEB3AUTH_CLIENT_ID=${process.env.VITE_WEB3AUTH_CLIENT_ID || ""}`,
+  `VITE_WEB3AUTH_NETWORK=${process.env.VITE_WEB3AUTH_NETWORK || (deployment.chainId === 84532 ? "sapphire_devnet" : "")}`,
+  `VITE_GATEWAY_URL=${process.env.VITE_GATEWAY_URL || ""}`,
   `VITE_APP_URL=${process.env.VITE_APP_URL || (deployment.chainId === 31337 ? "http://127.0.0.1:5173" : "")}`,
   `VITE_SETTLEMENT_TOKEN_ADDRESS=${contracts.settlementToken.address}`,
   `VITE_CREATION_BOND_POLICY_ADDRESS=${contracts.creationBondPolicy.address}`,
   `VITE_MARKET_FACTORY_ADDRESS=${contracts.marketFactory.address}`,
   `VITE_BOUNTY_FACTORY_ADDRESS=${contracts.bountyFactory.address}`,
   `VITE_CHALLENGE_FACTORY_ADDRESS=${contracts.challengeFactory.address}`,
+  ...(contracts.alterfordForwarder
+    ? [`VITE_ALTERFORD_FORWARDER_ADDRESS=${contracts.alterfordForwarder.address}`]
+    : []),
   ...(contracts.bountyRecoveryVault
     ? [`VITE_BOUNTY_RECOVERY_VAULT_ADDRESS=${contracts.bountyRecoveryVault.address}`]
     : []),

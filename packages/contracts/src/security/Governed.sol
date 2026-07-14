@@ -34,7 +34,7 @@ abstract contract Governed {
     }
 
     modifier onlyRole(bytes32 role) {
-        if (!hasRole[role][msg.sender]) revert AlterfordErrors.Unauthorized();
+        if (!hasRole[role][_actor()]) revert AlterfordErrors.Unauthorized();
         _;
     }
 
@@ -50,11 +50,15 @@ abstract contract Governed {
 
     function pause() external onlyRole(PAUSER_ROLE) {
         paused = true;
-        emit Paused(msg.sender);
+        emit Paused(_actor());
     }
 
     function unpause() external onlyRole(PAUSER_ROLE) {
         paused = false;
-        emit Unpaused(msg.sender);
+        emit Unpaused(_actor());
+    }
+
+    function _actor() internal view virtual returns (address) {
+        return msg.sender;
     }
 }

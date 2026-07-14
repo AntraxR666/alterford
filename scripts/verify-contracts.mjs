@@ -29,6 +29,12 @@ const verifications = [
     constructorArgs: encodeAbiParameters([{ type: "address" }], [deployer]),
   },
   {
+    name: "AlterfordForwarder",
+    address: contracts.alterfordForwarder.address,
+    target: "src/metatx/AlterfordForwarder.sol:AlterfordForwarder",
+    constructorArgs: "0x",
+  },
+  {
     name: "MarketFactory",
     address: contracts.marketFactory.address,
     target: "src/factories/MarketFactory.sol:MarketFactory",
@@ -51,8 +57,8 @@ const verifications = [
     address: contracts.challengeFactory.address,
     target: "src/factories/ChallengeFactory.sol:ChallengeFactory",
     constructorArgs: encodeAbiParameters(
-      [{ type: "address" }, { type: "address" }],
-      [deployer, contracts.creationBondPolicy.address],
+      [{ type: "address" }, { type: "address" }, { type: "address" }],
+      [deployer, contracts.creationBondPolicy.address, contracts.alterfordForwarder.address],
     ),
   },
   {

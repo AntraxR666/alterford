@@ -1,6 +1,7 @@
 import { http, createConfig } from "wagmi";
 import { injected, walletConnect } from "wagmi/connectors";
 import { arbitrum, base, baseSepolia, optimism, polygon } from "wagmi/chains";
+import { embeddedWallet } from "./embeddedWallet";
 
 export const anvil = {
   id: 31337,
@@ -22,7 +23,11 @@ export const targetChain =
   baseSepolia;
 
 const walletConnectProjectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID;
+const web3AuthClientId = import.meta.env.VITE_WEB3AUTH_CLIENT_ID;
 const appUrl = import.meta.env.VITE_APP_URL || globalThis.location?.origin || "https://alterford.invalid";
+const targetRpcUrl = targetChain.id === baseSepolia.id
+  ? import.meta.env.VITE_BASE_SEPOLIA_RPC_URL || baseSepolia.rpcUrls.default.http[0]
+  : targetChain.rpcUrls.default.http[0];
 const connectors = [
   injected(),
   ...(walletConnectProjectId
@@ -36,6 +41,18 @@ const connectors = [
             url: appUrl,
             icons: [`${appUrl}/icon.png`],
           },
+        }),
+      ]
+    : []),
+  ...(web3AuthClientId && targetChain.id !== anvil.id
+    ? [
+        embeddedWallet({
+          clientId: web3AuthClientId,
+          network: import.meta.env.VITE_WEB3AUTH_NETWORK === "sapphire_mainnet"
+            ? "sapphire_mainnet"
+            : "sapphire_devnet",
+          chain: targetChain,
+          rpcUrl: targetRpcUrl,
         }),
       ]
     : []),

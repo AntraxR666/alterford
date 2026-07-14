@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@alterford/sdk": "workspace:*",
+    "@web3auth/modal": "11.3.0",
     "qrcode.react": "^4.2.0"
   },
   "devDependencies": {

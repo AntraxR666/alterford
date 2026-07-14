@@ -296,7 +296,7 @@ contract Phase1SecurityTest {
     {
         token = new MockSettlementToken();
         CreationBondPolicy policy = new CreationBondPolicy(address(this));
-        factory = new ChallengeFactory(address(this), address(policy));
+        factory = new ChallengeFactory(address(this), address(policy), address(0xF0));
         creator = new Phase1Actor();
         executor = new Phase1Actor();
         token.mint(address(creator), rewardPool + 10_000_000);

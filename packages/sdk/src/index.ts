@@ -1,5 +1,6 @@
 export * from "./constants.js";
 export * from "./betAuthorization.js";
+export * from "./metaTransactions.js";
 export * from "./bondPolicy.js";
 export * from "./economics.js";
 export * from "./types.js";

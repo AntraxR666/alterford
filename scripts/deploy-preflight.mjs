@@ -92,6 +92,7 @@ if (chainName === "base-sepolia") {
 for (const artifact of [
   "MockSettlementToken",
   "CreationBondPolicy",
+  "AlterfordForwarder",
   "MarketFactory",
   "BountyFactory",
   "ChallengeFactory",

@@ -220,6 +220,7 @@ export interface ContractAddresses {
   marketFactory: Address;
   bountyFactory?: Address;
   challengeFactory?: Address;
+  alterfordForwarder?: Address;
   creatorRegistry?: Address;
   rewardDistributor?: Address;
 }

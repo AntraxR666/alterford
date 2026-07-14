@@ -7,6 +7,7 @@ import { ChallengeFactory } from "../src/factories/ChallengeFactory.sol";
 import { MarketFactory } from "../src/factories/MarketFactory.sol";
 import { MockSettlementToken } from "../src/token/MockSettlementToken.sol";
 import { BountyRecoveryVault } from "../src/security/BountyRecoveryVault.sol";
+import { AlterfordForwarder } from "../src/metatx/AlterfordForwarder.sol";
 
 interface Vm {
     function startBroadcast() external;
@@ -31,9 +32,10 @@ contract DeployAlterford {
         CreationBondPolicy creationBondPolicy = creationBondPolicyAddress == address(0)
             ? new CreationBondPolicy(admin)
             : CreationBondPolicy(creationBondPolicyAddress);
+        AlterfordForwarder forwarder = new AlterfordForwarder();
         new MarketFactory(admin, address(creationBondPolicy));
         BountyFactory bountyFactory = new BountyFactory(admin, address(creationBondPolicy));
-        new ChallengeFactory(admin, address(creationBondPolicy));
+        new ChallengeFactory(admin, address(creationBondPolicy), address(forwarder));
         BountyRecoveryVault recoveryVault = new BountyRecoveryVault(securityCouncil, coldWallet);
         bountyFactory.setRecoveryVault(address(recoveryVault));
 

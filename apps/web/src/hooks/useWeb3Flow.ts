@@ -1,6 +1,7 @@
 import {
   BASE_SEPOLIA_CHAIN_ID,
   DEFAULT_BOND_POLICY,
+  buildForwardRequestTypedData,
   challengeFactoryAbi,
   erc20Abi,
   formatAddress,
@@ -12,7 +13,7 @@ import {
   type TxLifecycle,
 } from "@alterford/sdk";
 import { useMemo, useState } from "react";
-import { keccak256, toBytes, type Address } from "viem";
+import { encodeFunctionData, keccak256, toBytes, type Address, type Hex } from "viem";
 import {
   useAccount,
   useChainId,
@@ -20,16 +21,18 @@ import {
   useDisconnect,
   usePublicClient,
   useReadContract,
+  useSignTypedData,
   useSwitchChain,
   useWriteContract,
 } from "wagmi";
 import { configuredAddresses, configuredChainId, hasCoreAddresses } from "../web3/contracts";
 import { targetChain } from "../web3/config";
+import { AlterfordGatewayClient, waitForRelay } from "../web3/gatewayClient";
 
 interface TxState {
   status: TxLifecycle;
   label: string;
-  hash?: Address;
+  hash?: Hex;
   error?: string;
 }
 
@@ -74,6 +77,7 @@ export function useWeb3Flow(
   const { disconnect } = useDisconnect();
   const { switchChainAsync, isPending: isSwitching } = useSwitchChain();
   const { writeContractAsync } = useWriteContract();
+  const { signTypedDataAsync } = useSignTypedData();
   const [tx, setTx] = useState<TxState>({ status: "idle", label: "Ready" });
   const [marketId, setMarketId] = useState("1");
   const [selectedOutcome, setSelectedOutcome] = useState<0 | 1>(0);
@@ -81,6 +85,15 @@ export function useWeb3Flow(
   const addresses = useMemo(() => configuredAddresses(), []);
   const contractsReady = hasCoreAddresses(addresses);
   const desiredChainId = configuredChainId();
+  const gateway = useMemo(
+    () => import.meta.env.VITE_GATEWAY_URL
+      ? new AlterfordGatewayClient(import.meta.env.VITE_GATEWAY_URL)
+      : null,
+    [],
+  );
+  const gaslessChallengesAvailable = Boolean(
+    gateway && addresses.alterfordForwarder && addresses.challengeFactory,
+  );
   const onTargetChain = chainId === desiredChainId;
   const requiredApproval = bondEstimate.amount + quickBetAmount;
   const challengeRequiredApproval = challengeBondEstimate.amount + challengeRewardPool;
@@ -142,6 +155,8 @@ export function useWeb3Flow(
   };
   const hasInjectedProvider = Boolean((globalThis as typeof globalThis & { ethereum?: EthereumProvider }).ethereum);
   const preferredConnectorName = hasInjectedProvider ? "wallet" : "WalletConnect";
+  const socialConnector = connectors.find((item) => item.id === "web3auth");
+  const hasSocialLogin = Boolean(socialConnector);
 
   async function connectWallet() {
     const connector = hasInjectedProvider
@@ -150,6 +165,13 @@ export function useWeb3Flow(
         ?? connectors.find((item) => item.name.toLowerCase().includes("walletconnect"))
         ?? connectors[0];
     await connectAsync({ connector });
+  }
+
+  async function connectSocialWallet() {
+    if (!socialConnector) {
+      throw new Error("El acceso por email no esta configurado en este entorno.");
+    }
+    await connectAsync({ connector: socialConnector, chainId: desiredChainId });
   }
 
   async function switchToTargetChain(): Promise<boolean> {
@@ -201,6 +223,68 @@ export function useWeb3Flow(
       setTx({ status: "confirmed", label, hash });
       await Promise.allSettled([balance.refetch(), allowance.refetch(), challengeAllowance.refetch()]);
     } catch (error) {
+      setTx({ status: "failed", label, error: readableError(error) });
+    }
+  }
+
+  async function runChallengeTx(
+    label: string,
+    data: Hex,
+    directAction: (contracts: ContractAddresses) => Promise<Hex>,
+  ) {
+    const forwarder = addresses.alterfordForwarder;
+    const challengeFactory = addresses.challengeFactory;
+    if (!gateway || !forwarder || !challengeFactory) {
+      await runTx(label, directAction);
+      return;
+    }
+    if (!contractsReady || !account.address || !publicClient) {
+      await runTx(label, directAction);
+      return;
+    }
+
+    let signatureStarted = false;
+    try {
+      if (!onTargetChain) {
+        const switched = await switchToTargetChain();
+        if (!switched) return;
+      }
+      setTx({ status: "pending", label: `${label}: firma sin gas` });
+      const prepared = await gateway.prepareRelay({
+        chainId: desiredChainId,
+        user: account.address,
+        data,
+      });
+      const request = prepared.request;
+      if (
+        request.from.toLowerCase() !== account.address.toLowerCase()
+        || request.to.toLowerCase() !== challengeFactory.toLowerCase()
+        || request.data.toLowerCase() !== data.toLowerCase()
+        || request.value !== 0n
+        || request.gas <= 0n
+        || request.gas > 2_000_000n
+        || request.deadline <= Math.floor(Date.now() / 1_000)
+      ) {
+        throw new Error("El gateway devolvio una solicitud de patrocinio invalida.");
+      }
+      signatureStarted = true;
+      const signature = await signTypedDataAsync(
+        buildForwardRequestTypedData(desiredChainId, forwarder, request),
+      );
+      setTx({ status: "pending", label: `${label}: enviando sin gas` });
+      const submission = await gateway.submitRelay({
+        request: { ...request, signature },
+        idempotencyKey: `relay-${crypto.randomUUID()}`,
+      });
+      const result = await waitForRelay(gateway, submission.taskId);
+      if (result.state !== "confirmed") throw new Error("El relay no pudo ejecutar la accion.");
+      setTx({ status: "confirmed", label: `${label}: confirmado sin gas`, hash: result.transactionHash });
+      await Promise.allSettled([balance.refetch(), allowance.refetch(), challengeAllowance.refetch()]);
+    } catch (error) {
+      if (!signatureStarted) {
+        await runTx(`${label} (gas propio)`, directAction);
+        return;
+      }
       setTx({ status: "failed", label, error: readableError(error) });
     }
   }
@@ -323,41 +407,47 @@ export function useWeb3Flow(
         [hasEnoughChallengeBalance, `Necesitas ${formatUsdt(challengeCreateCost)} aUSDT para recompensa + bond.`],
         [!needsChallengeApproval, "Primero autoriza aUSDT para retos Underworld."],
       ],
-      () => runTx("Crear reto Underworld", (contracts) => {
-      if (!contracts.challengeFactory) throw new Error("ChallengeFactory is not configured for this network.");
+      () => {
+      const challengeFactory = addresses.challengeFactory;
+      if (!challengeFactory || !addresses.settlementToken) throw new Error("ChallengeFactory is not configured for this network.");
       const metadataURI = buildChallengeMetadataURI(input);
       const metadataSeed = `${input.title}-${input.evidence}-${input.stakeUsdt.toString()}-${Date.now()}`;
       const highRiskOrValue =
         input.stakeUsdt >= 1_000_000_000n || input.riskLevel === "High" || input.riskLevel === "Critical";
       const maxDeadlineMinutes = highRiskOrValue ? 2_880 : 1_440;
-      return writeContractAsync({
-        address: contracts.challengeFactory,
+      const args = [
+        addresses.settlementToken,
+        input.stakeUsdt,
+        keccak256(toBytes(metadataSeed)),
+        metadataURI,
+        BigInt(
+          Math.floor(Date.now() / 1000)
+            + Math.min(maxDeadlineMinutes, Math.max(30, input.deadlineMinutes)) * 60,
+        ),
+        toOnchainBondContext({
+          entityType: "Challenge",
+          mode: "Underworld",
+          creatorTier: "Basic",
+          categoryRisk: input.riskLevel,
+          reputation: "New",
+          expectedVolumeUsdt: input.stakeUsdt,
+          disputeCount: input.riskLevel === "Critical" ? 2 : 1,
+          fraudCount: 0,
+          policy: DEFAULT_BOND_POLICY,
+        }),
+      ] as const;
+      return runChallengeTx("Crear reto Underworld", encodeFunctionData({
+        abi: challengeFactoryAbi,
+        functionName: "createChallenge",
+        args,
+      }), () => writeContractAsync({
+        address: challengeFactory,
         abi: challengeFactoryAbi,
         functionName: "createChallenge",
         chainId: desiredChainId,
-        args: [
-          contracts.settlementToken,
-          input.stakeUsdt,
-          keccak256(toBytes(metadataSeed)),
-          metadataURI,
-          BigInt(
-            Math.floor(Date.now() / 1000)
-              + Math.min(maxDeadlineMinutes, Math.max(30, input.deadlineMinutes)) * 60,
-          ),
-          toOnchainBondContext({
-            entityType: "Challenge",
-            mode: "Underworld",
-            creatorTier: "Basic",
-            categoryRisk: input.riskLevel,
-            reputation: "New",
-            expectedVolumeUsdt: input.stakeUsdt,
-            disputeCount: input.riskLevel === "Critical" ? 2 : 1,
-            fraudCount: 0,
-            policy: DEFAULT_BOND_POLICY,
-          }),
-        ],
-      });
-      }),
+        args,
+      }));
+      },
     );
 
   const acceptChallenge = (input: ChallengeActionInput) =>
@@ -367,107 +457,149 @@ export function useWeb3Flow(
         [hasEnoughChallengeExecutorBalance, `Necesitas ${formatUsdt(challengeExecutorCost)} aUSDT para el bond de ejecutor.`],
         [!needsChallengeExecutorApproval, "Primero autoriza aUSDT para aceptar retos."],
       ],
-      () => runTx("Aceptar reto", (contracts) => {
-      if (!contracts.challengeFactory) throw new Error("ChallengeFactory is not configured for this network.");
-      return writeContractAsync({
-        address: contracts.challengeFactory,
+      () => {
+      const challengeFactory = addresses.challengeFactory;
+      if (!challengeFactory) throw new Error("ChallengeFactory is not configured for this network.");
+      const args = [BigInt(input.challengeId || "1"), input.liveStreamURI || ""] as const;
+      return runChallengeTx("Aceptar reto", encodeFunctionData({
+        abi: challengeFactoryAbi,
+        functionName: "acceptChallenge",
+        args,
+      }), () => writeContractAsync({
+        address: challengeFactory,
         abi: challengeFactoryAbi,
         functionName: "acceptChallenge",
         chainId: desiredChainId,
-        args: [BigInt(input.challengeId || "1"), input.liveStreamURI || ""],
-      });
-      }),
+        args,
+      }));
+      },
     );
 
-  const updateChallengeLiveStream = (input: ChallengeActionInput) =>
-    runTx("Actualizar live del reto", (contracts) => {
+  const updateChallengeLiveStream = (input: ChallengeActionInput) => {
+    const args = [BigInt(input.challengeId || "1"), input.liveStreamURI || ""] as const;
+    return runChallengeTx("Actualizar live del reto", encodeFunctionData({
+      abi: challengeFactoryAbi,
+      functionName: "updateLiveStreamURI",
+      args,
+    }), (contracts) => {
       if (!contracts.challengeFactory) throw new Error("ChallengeFactory is not configured for this network.");
       return writeContractAsync({
         address: contracts.challengeFactory,
         abi: challengeFactoryAbi,
         functionName: "updateLiveStreamURI",
         chainId: desiredChainId,
-        args: [BigInt(input.challengeId || "1"), input.liveStreamURI || ""],
+        args,
       });
     });
+  };
 
-  const submitChallengeEvidence = (input: ChallengeActionInput) =>
-    runTx("Enviar evidencia del reto", (contracts) => {
+  const submitChallengeEvidence = (input: ChallengeActionInput) => {
+    const evidenceURI = input.evidenceURI || input.liveStreamURI || `ipfs://alterford/evidence/${Date.now()}`;
+    const args = [
+      BigInt(input.challengeId || "1"),
+      keccak256(toBytes(evidenceURI)),
+      evidenceURI,
+      input.liveStreamURI || "",
+    ] as const;
+    return runChallengeTx("Enviar evidencia del reto", encodeFunctionData({
+      abi: challengeFactoryAbi,
+      functionName: "submitEvidence",
+      args,
+    }), (contracts) => {
       if (!contracts.challengeFactory) throw new Error("ChallengeFactory is not configured for this network.");
-      const evidenceURI = input.evidenceURI || input.liveStreamURI || `ipfs://alterford/evidence/${Date.now()}`;
       return writeContractAsync({
         address: contracts.challengeFactory,
         abi: challengeFactoryAbi,
         functionName: "submitEvidence",
         chainId: desiredChainId,
-        args: [
-          BigInt(input.challengeId || "1"),
-          keccak256(toBytes(evidenceURI)),
-          evidenceURI,
-          input.liveStreamURI || "",
-        ],
+        args,
       });
     });
+  };
 
   const proposeChallengeResolution = (
     input: ChallengeActionInput & { executorSucceeded: boolean },
-  ) =>
-    runTx("Proponer resultado del reto", (contracts) => {
+  ) => {
+    const evidenceReference = input.evidenceURI || input.liveStreamURI || "";
+    const args = [
+      BigInt(input.challengeId || "1"),
+      input.executorSucceeded,
+      evidenceReference ? keccak256(toBytes(evidenceReference)) : keccak256(toBytes("no-evidence")),
+    ] as const;
+    return runChallengeTx("Proponer resultado del reto", encodeFunctionData({
+      abi: challengeFactoryAbi,
+      functionName: "proposeResolution",
+      args,
+    }), (contracts) => {
       if (!contracts.challengeFactory) throw new Error("ChallengeFactory is not configured for this network.");
-      const evidenceReference = input.evidenceURI || input.liveStreamURI || "";
       return writeContractAsync({
         address: contracts.challengeFactory,
         abi: challengeFactoryAbi,
         functionName: "proposeResolution",
         chainId: desiredChainId,
-        args: [
-          BigInt(input.challengeId || "1"),
-          input.executorSucceeded,
-          evidenceReference ? keccak256(toBytes(evidenceReference)) : keccak256(toBytes("no-evidence")),
-        ],
+        args,
       });
     });
+  };
 
   const confirmChallengeResolution = (
     input: ChallengeActionInput & { executorSucceeded: boolean },
-  ) =>
-    runTx("Confirmar resultado del reto", (contracts) => {
+  ) => {
+    const args = [BigInt(input.challengeId || "1"), input.executorSucceeded] as const;
+    return runChallengeTx("Confirmar resultado del reto", encodeFunctionData({
+      abi: challengeFactoryAbi,
+      functionName: "confirmResolution",
+      args,
+    }), (contracts) => {
       if (!contracts.challengeFactory) throw new Error("ChallengeFactory is not configured for this network.");
       return writeContractAsync({
         address: contracts.challengeFactory,
         abi: challengeFactoryAbi,
         functionName: "confirmResolution",
         chainId: desiredChainId,
-        args: [BigInt(input.challengeId || "1"), input.executorSucceeded],
+        args,
       });
     });
+  };
 
-  const disputeChallengeResolution = (input: ChallengeActionInput) =>
-    runTx("Abrir disputa del reto", (contracts) => {
+  const disputeChallengeResolution = (input: ChallengeActionInput) => {
+    const args = [
+      BigInt(input.challengeId || "1"),
+      keccak256(toBytes(input.reason || "challenge-dispute")),
+    ] as const;
+    return runChallengeTx("Abrir disputa del reto", encodeFunctionData({
+      abi: challengeFactoryAbi,
+      functionName: "disputeResolution",
+      args,
+    }), (contracts) => {
       if (!contracts.challengeFactory) throw new Error("ChallengeFactory is not configured for this network.");
       return writeContractAsync({
         address: contracts.challengeFactory,
         abi: challengeFactoryAbi,
         functionName: "disputeResolution",
         chainId: desiredChainId,
-        args: [
-          BigInt(input.challengeId || "1"),
-          keccak256(toBytes(input.reason || "challenge-dispute")),
-        ],
+        args,
       });
     });
+  };
 
-  const finalizeUndisputedChallenge = (input: ChallengeActionInput) =>
-    runTx("Finalizar reto sin disputa", (contracts) => {
+  const finalizeUndisputedChallenge = (input: ChallengeActionInput) => {
+    const args = [BigInt(input.challengeId || "1")] as const;
+    return runChallengeTx("Finalizar reto sin disputa", encodeFunctionData({
+      abi: challengeFactoryAbi,
+      functionName: "finalizeUndisputed",
+      args,
+    }), (contracts) => {
       if (!contracts.challengeFactory) throw new Error("ChallengeFactory is not configured for this network.");
       return writeContractAsync({
         address: contracts.challengeFactory,
         abi: challengeFactoryAbi,
         functionName: "finalizeUndisputed",
         chainId: desiredChainId,
-        args: [BigInt(input.challengeId || "1")],
+        args,
       });
     });
+  };
 
   const resolveChallengeDispute = (
     input: ChallengeActionInput & { executorSucceeded: boolean },
@@ -573,11 +705,13 @@ export function useWeb3Flow(
     chainId,
     connectors,
     preferredConnectorName,
+    hasSocialLogin,
     isConnecting,
     isSwitching,
     desiredChainId,
     onTargetChain,
     contractsReady,
+    gaslessChallengesAvailable,
     addresses,
     balance: currentBalance,
     allowance: currentAllowance,
@@ -601,6 +735,7 @@ export function useWeb3Flow(
     setMarketId,
     setSelectedOutcome,
     connectWallet,
+    connectSocialWallet,
     disconnect,
     switchToTargetChain,
     approveSettlement,

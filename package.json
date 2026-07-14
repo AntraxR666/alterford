@@ -8,10 +8,10 @@
     "node": ">=22 <23"
   },
   "scripts": {
-    "build": "pnpm -r --filter @alterford/sdk --filter @alterford/web --filter @alterford/indexer build",
-    "typecheck": "pnpm -r --filter @alterford/sdk --filter @alterford/web --filter @alterford/indexer typecheck",
-    "test": "pnpm -r --filter @alterford/sdk --filter @alterford/web --filter @alterford/indexer test",
-    "lint": "pnpm -r --filter @alterford/sdk --filter @alterford/web --filter @alterford/indexer lint",
+    "build": "pnpm -r --filter @alterford/sdk --filter @alterford/web --filter @alterford/indexer --filter @alterford/gateway build",
+    "typecheck": "pnpm -r --filter @alterford/sdk --filter @alterford/web --filter @alterford/indexer --filter @alterford/gateway typecheck",
+    "test": "pnpm -r --filter @alterford/sdk --filter @alterford/web --filter @alterford/indexer --filter @alterford/gateway test",
+    "lint": "pnpm -r --filter @alterford/sdk --filter @alterford/web --filter @alterford/indexer --filter @alterford/gateway lint",
     "dev": "pnpm --filter @alterford/web dev",
     "contracts:build": "cd packages/contracts && forge build",
     "contracts:test": "cd packages/contracts && forge test",
@@ -27,6 +27,8 @@
     "demo:local-challenge-flow": "node scripts/demo-local-challenge-flow.mjs",
     "indexer:env": "node scripts/write-indexer-env.mjs",
     "indexer:check": "node scripts/check-indexer.mjs",
+    "gateway:start": "pnpm --filter @alterford/gateway start",
+    "gateway:env": "node scripts/write-gateway-env.mjs",
     "web:env:check": "node scripts/check-frontend-env.mjs",
     "security:slither": "node scripts/security-scan.mjs slither",
     "security:echidna": "node scripts/security-scan.mjs echidna",

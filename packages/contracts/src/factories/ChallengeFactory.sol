@@ -8,8 +8,9 @@ import { AlterfordErrors } from "../libraries/AlterfordErrors.sol";
 import { FeePolicy } from "../libraries/FeePolicy.sol";
 import { CreationBondPolicy } from "../bonds/CreationBondPolicy.sol";
 import { IERC20 } from "../token/IERC20.sol";
+import { ERC2771Context } from "@openzeppelin/contracts/metatx/ERC2771Context.sol";
 
-contract ChallengeFactory is Governed, ReentrancyGuardLite {
+contract ChallengeFactory is Governed, ReentrancyGuardLite, ERC2771Context {
     struct Challenge {
         address creator;
         address executor;
@@ -130,8 +131,12 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite {
         bytes32 indexed entityType, uint256 indexed entityId, uint256 amount, bytes32 reasonHash
     );
 
-    constructor(address initialAdmin, address initialBondPolicy) Governed(initialAdmin) {
+    constructor(address initialAdmin, address initialBondPolicy, address trustedForwarder)
+        Governed(initialAdmin)
+        ERC2771Context(trustedForwarder)
+    {
         if (initialBondPolicy == address(0)) revert AlterfordErrors.InvalidBondPolicy();
+        if (trustedForwarder == address(0)) revert AlterfordErrors.Unauthorized();
         bondPolicy = CreationBondPolicy(initialBondPolicy);
         emit BondPolicyUpdated(address(0), initialBondPolicy);
     }
@@ -179,7 +184,7 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite {
         challengeId = nextChallengeId++;
 
         challenges[challengeId] = Challenge({
-            creator: msg.sender,
+            creator: _actor(),
             executor: address(0),
             settlementToken: settlementToken,
             rulesHash: rulesHash,
@@ -194,13 +199,13 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite {
         });
         bondByChallenge[challengeId] = requiredBond;
         if (!IERC20(settlementToken)
-                .transferFrom(msg.sender, address(this), requiredBond + rewardPool)) {
+                .transferFrom(_actor(), address(this), requiredBond + rewardPool)) {
             revert AlterfordErrors.TransferFailed();
         }
 
-        emit BondCalculated("Challenge", challengeId, msg.sender, requiredBond, reasonFlags);
-        emit BondLocked("Challenge", challengeId, msg.sender, requiredBond);
-        emit ChallengeCreated(challengeId, msg.sender, rewardPool, rulesHash);
+        emit BondCalculated("Challenge", challengeId, _actor(), requiredBond, reasonFlags);
+        emit BondLocked("Challenge", challengeId, _actor(), requiredBond);
+        emit ChallengeCreated(challengeId, _actor(), rewardPool, rulesHash);
     }
 
     function acceptChallenge(uint256 challengeId, string calldata liveStreamURI)
@@ -214,23 +219,23 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite {
         }
         if (challenge.creator == address(0)) revert AlterfordErrors.InvalidState();
         if (block.timestamp > challenge.deadline) revert AlterfordErrors.InvalidState();
-        if (msg.sender == challenge.creator) revert AlterfordErrors.InvalidState();
+        if (_actor() == challenge.creator) revert AlterfordErrors.InvalidState();
 
         uint256 executorBond = bondByChallenge[challengeId];
-        challenge.executor = msg.sender;
+        challenge.executor = _actor();
         challenge.liveStreamURI = liveStreamURI;
         challenge.state = AlterfordTypes.ChallengeState.Accepted;
         executorBondByChallenge[challengeId] = executorBond;
 
-        if (!IERC20(challenge.settlementToken)
-                .transferFrom(msg.sender, address(this), executorBond)) {
+        if (!IERC20(challenge.settlementToken).transferFrom(_actor(), address(this), executorBond))
+        {
             revert AlterfordErrors.TransferFailed();
         }
 
-        emit BondLocked("ChallengeExecutor", challengeId, msg.sender, executorBond);
-        emit ChallengeAccepted(challengeId, msg.sender, executorBond);
+        emit BondLocked("ChallengeExecutor", challengeId, _actor(), executorBond);
+        emit ChallengeAccepted(challengeId, _actor(), executorBond);
         if (bytes(liveStreamURI).length != 0) {
-            emit ChallengeLiveStreamUpdated(challengeId, msg.sender, liveStreamURI);
+            emit ChallengeLiveStreamUpdated(challengeId, _actor(), liveStreamURI);
         }
     }
 
@@ -246,11 +251,11 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite {
         ) {
             revert AlterfordErrors.InvalidState();
         }
-        if (msg.sender != challenge.executor && msg.sender != challenge.creator) {
+        if (_actor() != challenge.executor && _actor() != challenge.creator) {
             revert AlterfordErrors.Unauthorized();
         }
         challenge.liveStreamURI = liveStreamURI;
-        emit ChallengeLiveStreamUpdated(challengeId, msg.sender, liveStreamURI);
+        emit ChallengeLiveStreamUpdated(challengeId, _actor(), liveStreamURI);
     }
 
     function submitEvidence(
@@ -263,7 +268,7 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite {
         if (challenge.state != AlterfordTypes.ChallengeState.Accepted) {
             revert AlterfordErrors.InvalidState();
         }
-        if (msg.sender != challenge.executor) revert AlterfordErrors.Unauthorized();
+        if (_actor() != challenge.executor) revert AlterfordErrors.Unauthorized();
         if (evidenceHash == bytes32(0)) revert AlterfordErrors.InvalidMetadataHash();
         if (block.timestamp > challenge.deadline) revert AlterfordErrors.InvalidState();
 
@@ -273,10 +278,10 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite {
         challenge.state = AlterfordTypes.ChallengeState.EvidenceSubmitted;
 
         emit ChallengeEvidenceSubmitted(
-            challengeId, msg.sender, evidenceHash, evidenceURI, liveStreamURI
+            challengeId, _actor(), evidenceHash, evidenceURI, liveStreamURI
         );
         if (bytes(liveStreamURI).length != 0) {
-            emit ChallengeLiveStreamUpdated(challengeId, msg.sender, liveStreamURI);
+            emit ChallengeLiveStreamUpdated(challengeId, _actor(), liveStreamURI);
         }
     }
 
@@ -289,7 +294,7 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite {
             challenge.state != AlterfordTypes.ChallengeState.Accepted
                 && challenge.state != AlterfordTypes.ChallengeState.EvidenceSubmitted
         ) revert AlterfordErrors.InvalidState();
-        if (msg.sender != challenge.creator && msg.sender != challenge.executor) {
+        if (_actor() != challenge.creator && _actor() != challenge.executor) {
             revert AlterfordErrors.Unauthorized();
         }
         if (resolutionProposalByChallenge[challengeId].proposer != address(0)) {
@@ -302,7 +307,7 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite {
 
         uint64 disputeDeadline = uint64(block.timestamp + resolutionWindowFor(challengeId));
         resolutionProposalByChallenge[challengeId] = ResolutionProposal({
-            proposer: msg.sender,
+            proposer: _actor(),
             executorSucceeded: executorSucceeded,
             evidenceHash: evidenceHash == bytes32(0) ? challenge.evidenceHash : evidenceHash,
             proposedAt: uint64(block.timestamp),
@@ -310,7 +315,7 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite {
         });
         challenge.state = AlterfordTypes.ChallengeState.Review;
         emit ChallengeResolutionProposed(
-            challengeId, msg.sender, executorSucceeded, evidenceHash, disputeDeadline
+            challengeId, _actor(), executorSucceeded, evidenceHash, disputeDeadline
         );
     }
 
@@ -326,14 +331,14 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite {
         }
         if (proposal.proposer == address(0)) revert AlterfordErrors.ResolutionNotProposed();
         if (
-            (msg.sender != challenge.creator && msg.sender != challenge.executor)
-                || msg.sender == proposal.proposer
+            (_actor() != challenge.creator && _actor() != challenge.executor)
+                || _actor() == proposal.proposer
         ) revert AlterfordErrors.Unauthorized();
         if (executorSucceeded != proposal.executorSucceeded) {
             revert AlterfordErrors.ResolutionMismatch();
         }
 
-        emit ChallengeResolutionConfirmed(challengeId, msg.sender, executorSucceeded);
+        emit ChallengeResolutionConfirmed(challengeId, _actor(), executorSucceeded);
         _finalizeResolution(
             challengeId,
             challenge,
@@ -362,21 +367,20 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite {
             revert AlterfordErrors.DisputeAlreadyOpened();
         }
         if (
-            msg.sender != challenge.creator && msg.sender != challenge.executor
-                && !hasRole[WATCHER_ROLE][msg.sender]
+            _actor() != challenge.creator && _actor() != challenge.executor
+                && !hasRole[WATCHER_ROLE][_actor()]
         ) revert AlterfordErrors.Unauthorized();
         if (reasonHash == bytes32(0)) revert AlterfordErrors.InvalidIncidentHash();
 
         uint256 bondAmount = disputeBondFor(challengeId);
-        disputantByChallenge[challengeId] = msg.sender;
+        disputantByChallenge[challengeId] = _actor();
         disputeBondByChallenge[challengeId] = bondAmount;
         challenge.state = AlterfordTypes.ChallengeState.Disputed;
-        if (!IERC20(challenge.settlementToken).transferFrom(msg.sender, address(this), bondAmount))
-        {
+        if (!IERC20(challenge.settlementToken).transferFrom(_actor(), address(this), bondAmount)) {
             revert AlterfordErrors.TransferFailed();
         }
-        emit BondLocked("ChallengeDispute", challengeId, msg.sender, bondAmount);
-        emit ChallengeResolutionDisputed(challengeId, msg.sender, bondAmount, reasonHash);
+        emit BondLocked("ChallengeDispute", challengeId, _actor(), bondAmount);
+        emit ChallengeResolutionDisputed(challengeId, _actor(), bondAmount, reasonHash);
     }
 
     function finalizeUndisputed(uint256 challengeId) external nonReentrant whenNotPaused {
@@ -702,5 +706,9 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite {
             revert AlterfordErrors.TransferFailed();
         }
         emit BondReleased("ChallengeExecutor", challengeId, challenge.executor, amount);
+    }
+
+    function _actor() internal view override returns (address) {
+        return _msgSender();
     }
 }

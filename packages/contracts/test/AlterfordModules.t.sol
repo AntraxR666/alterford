@@ -96,7 +96,8 @@ contract AlterfordModulesTest {
     function testChallengeFactoryLocksReleasesAndSlashesDynamicBond() public {
         MockSettlementToken token = new MockSettlementToken();
         CreationBondPolicy policy = new CreationBondPolicy(address(this));
-        ChallengeFactory factory = new ChallengeFactory(address(this), address(policy));
+        ChallengeFactory factory =
+            new ChallengeFactory(address(this), address(policy), address(0xF0));
 
         token.mint(address(this), 30_000_000);
         token.approve(address(factory), 30_000_000);
@@ -131,7 +132,8 @@ contract AlterfordModulesTest {
     function testChallengeEscrowAcceptEvidenceResolvePaysFeesAndBonds() public {
         MockSettlementToken token = new MockSettlementToken();
         CreationBondPolicy policy = new CreationBondPolicy(address(this));
-        ChallengeFactory factory = new ChallengeFactory(address(this), address(policy));
+        ChallengeFactory factory =
+            new ChallengeFactory(address(this), address(policy), address(0xF0));
         ChallengeUser creator = new ChallengeUser();
         ChallengeUser executor = new ChallengeUser();
 
@@ -170,7 +172,8 @@ contract AlterfordModulesTest {
     function testChallengeCancelRefundsRewardAndBonds() public {
         MockSettlementToken token = new MockSettlementToken();
         CreationBondPolicy policy = new CreationBondPolicy(address(this));
-        ChallengeFactory factory = new ChallengeFactory(address(this), address(policy));
+        ChallengeFactory factory =
+            new ChallengeFactory(address(this), address(policy), address(0xF0));
         ChallengeUser creator = new ChallengeUser();
         ChallengeUser executor = new ChallengeUser();
 
@@ -193,7 +196,8 @@ contract AlterfordModulesTest {
     function testChallengeExecutorFailureRefundsRewardAndSlashesExecutorBond() public {
         MockSettlementToken token = new MockSettlementToken();
         CreationBondPolicy policy = new CreationBondPolicy(address(this));
-        ChallengeFactory factory = new ChallengeFactory(address(this), address(policy));
+        ChallengeFactory factory =
+            new ChallengeFactory(address(this), address(policy), address(0xF0));
         ChallengeUser creator = new ChallengeUser();
         ChallengeUser executor = new ChallengeUser();
 

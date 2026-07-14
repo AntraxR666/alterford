@@ -17,6 +17,7 @@ export function configuredAddresses(): Partial<ContractAddresses> {
     marketFactory: envAddress(import.meta.env.VITE_MARKET_FACTORY_ADDRESS),
     bountyFactory: envAddress(import.meta.env.VITE_BOUNTY_FACTORY_ADDRESS),
     challengeFactory: envAddress(import.meta.env.VITE_CHALLENGE_FACTORY_ADDRESS),
+    alterfordForwarder: envAddress(import.meta.env.VITE_ALTERFORD_FORWARDER_ADDRESS),
   };
 }
 

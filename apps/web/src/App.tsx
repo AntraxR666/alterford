@@ -11,6 +11,7 @@ import {
   Gauge,
   History,
   LockKeyhole,
+  Mail,
   PlusCircle,
   ShieldCheck,
   Siren,
@@ -22,7 +23,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { isAddress } from "viem";
+import { isAddress, type Address } from "viem";
 import {
   DEFAULT_BOND_POLICY,
   DEFAULT_ECONOMICS,
@@ -38,6 +39,7 @@ import { sampleMarkets } from "./features/markets/sampleMarkets";
 import { useIndexerFeed } from "./hooks/useIndexerFeed";
 import { useWeb3Flow } from "./hooks/useWeb3Flow";
 import { useAppStore } from "./stores/appStore";
+import { AlterfordGatewayClient } from "./web3/gatewayClient";
 
 type TabId = "markets" | "challenges" | "create" | "portfolio" | "creator";
 type MarketViewModel = {
@@ -211,10 +213,17 @@ export function App() {
               <WalletCards size={16} /> {web3.accountLabel}
             </button>
           ) : (
-            <button className="wallet-button primary" onClick={web3.connectWallet} disabled={web3.isConnecting}>
-              <WalletCards size={16} />
-              {web3.isConnecting ? "Conectando" : `Conectar ${preferredConnectorName}`}
-            </button>
+            <>
+              {web3.hasSocialLogin && (
+                <button className="wallet-button" onClick={web3.connectSocialWallet} disabled={web3.isConnecting}>
+                  <Mail size={16} /> Entrar con email
+                </button>
+              )}
+              <button className="wallet-button primary" onClick={web3.connectWallet} disabled={web3.isConnecting}>
+                <WalletCards size={16} />
+                {web3.isConnecting ? "Conectando" : `Conectar ${preferredConnectorName}`}
+              </button>
+            </>
           )}
         </div>
       </header>
@@ -296,6 +305,7 @@ export function App() {
           totalRequiredLabel={challengeTotalRequiredLabel}
           bondReasons={challengeBondEstimate.reasons}
           moderation={moderation}
+          gaslessAvailable={web3.gaslessChallengesAvailable}
           needsApproval={web3.needsChallengeApproval}
           hasEnoughBalance={web3.hasEnoughChallengeBalance}
           tx={web3.tx}
@@ -658,6 +668,7 @@ function ChallengesView({
   totalRequiredLabel,
   bondReasons,
   moderation,
+  gaslessAvailable,
   needsApproval,
   hasEnoughBalance,
   tx,
@@ -697,6 +708,7 @@ function ChallengesView({
   totalRequiredLabel: string;
   bondReasons: readonly string[];
   moderation: { allowed: boolean; level: string; message: string };
+  gaslessAvailable: boolean;
   needsApproval: boolean;
   hasEnoughBalance: boolean;
   tx: { status: string; label: string; hash?: string; error?: string };
@@ -782,6 +794,12 @@ function ChallengesView({
         <p className="eyebrow">Crear reto protegido</p>
         <h2>Define el reto antes de bloquear fondos.</h2>
         <p className="help-text">Crear un reto bloquea recompensa + bond. Aceptarlo exige otra wallet: el creador no puede aceptar su propio reto.</p>
+        {gaslessAvailable && (
+          <div className="step-line done">
+            <Zap size={17} />
+            <span>Gas patrocinado: las acciones core del reto requieren firma, pero Alterford paga el gas.</span>
+          </div>
+        )}
         <label>
           Reto
           <textarea value={title} onChange={(event) => onTitle(event.target.value)} />
@@ -1053,6 +1071,7 @@ function PortfolioView({
         <span>aUSDT es un token mock en Base Sepolia para probar Alterford. No es USDT real.</span>
       </InfoCard>
       <DepositCard depositAddress={depositAddress} desiredChainId={desiredChainId} settlementToken={settlementToken} />
+      <FiatOnRampCard walletAddress={depositAddress} />
       <InfoCard title="Autorizacion" icon={<ShieldCheck size={18} />}>
         <strong>{allowanceLabel}</strong>
         <span>Autorizar no cobra fondos. Es permiso previo; el cobro ocurre solo al crear, aceptar reto o apostar.</span>
@@ -1072,6 +1091,72 @@ function PortfolioView({
         <TxState tx={tx} />
       </InfoCard>
     </section>
+  );
+}
+
+function FiatOnRampCard({ walletAddress }: { walletAddress?: string }) {
+  const gatewayUrl = import.meta.env.VITE_GATEWAY_URL;
+  const [amount, setAmount] = useState("25");
+  const [status, setStatus] = useState<"idle" | "pending" | "ready" | "failed">("idle");
+  const [widgetUrl, setWidgetUrl] = useState("");
+  const [error, setError] = useState("");
+  if (!gatewayUrl) return null;
+
+  async function createSession() {
+    if (!walletAddress || !isAddress(walletAddress)) {
+      setStatus("failed");
+      setError("Conecta una wallet para definir la direccion que recibira la compra.");
+      return;
+    }
+    const fiatAmount = Number(amount);
+    if (!Number.isFinite(fiatAmount) || fiatAmount < 10 || fiatAmount > 10_000) {
+      setStatus("failed");
+      setError("El monto debe estar entre 10 y 10.000 USD.");
+      return;
+    }
+    try {
+      setStatus("pending");
+      setWidgetUrl("");
+      setError("");
+      const client = new AlterfordGatewayClient(gatewayUrl!);
+      const config = await client.config();
+      if (!config.fiatEnabled) throw new Error("El proveedor fiat aun no esta habilitado.");
+      const orderId = `alterford-${crypto.randomUUID()}`;
+      const session = await client.createFiatSession({
+        walletAddress: walletAddress as Address,
+        fiatAmount,
+        fiatCurrency: "USD",
+        cryptoCurrencyCode: "ETH",
+        network: "base",
+        partnerOrderId: orderId,
+        idempotencyKey: orderId,
+      });
+      setWidgetUrl(session.widgetUrl);
+      setStatus("ready");
+    } catch (caught) {
+      setStatus("failed");
+      setError(caught instanceof Error ? caught.message : "No se pudo iniciar la compra.");
+    }
+  }
+
+  return (
+    <InfoCard title="Comprar cripto" icon={<WalletCards size={18} />}>
+      <span>Compra ETH en Base mediante un proveedor externo. Alterford no custodia dinero fiat ni datos de pago.</span>
+      <label>
+        Monto en USD
+        <input type="number" min={10} max={10_000} value={amount} onChange={(event) => setAmount(event.target.value)} />
+      </label>
+      <button onClick={createSession} disabled={status === "pending" || !walletAddress}>
+        {status === "pending" ? "Creando sesion segura" : "Ver metodos de pago"}
+      </button>
+      {status === "ready" && widgetUrl && (
+        <a className="button-link" href={widgetUrl} target="_blank" rel="noopener">
+          Continuar con el proveedor
+        </a>
+      )}
+      {status === "failed" && <small className="error-text">{error}</small>}
+      <small>En Base Sepolia se usa el faucet aUSDT. La compra fiat entrega un activo soportado por el proveedor en la red seleccionada.</small>
+    </InfoCard>
   );
 }
 

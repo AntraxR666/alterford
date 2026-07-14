@@ -67,9 +67,14 @@ async function main() {
 
   const settlementToken = await deploy("MockSettlementToken");
   const creationBondPolicy = await deploy("CreationBondPolicy", [account.address]);
+  const alterfordForwarder = await deploy("AlterfordForwarder");
   const marketFactory = await deploy("MarketFactory", [account.address, creationBondPolicy.address]);
   const bountyFactory = await deploy("BountyFactory", [account.address, creationBondPolicy.address]);
-  const challengeFactory = await deploy("ChallengeFactory", [account.address, creationBondPolicy.address]);
+  const challengeFactory = await deploy("ChallengeFactory", [
+    account.address,
+    creationBondPolicy.address,
+    alterfordForwarder.address,
+  ]);
   const bountyRecoveryVault = await deploy("BountyRecoveryVault", [account.address, account.address]);
   const setVaultHash = await walletClient.writeContract({
     account,
@@ -91,6 +96,7 @@ async function main() {
     startBlock: minBlockNumber([
       settlementToken,
       creationBondPolicy,
+      alterfordForwarder,
       marketFactory,
       bountyFactory,
       challengeFactory,
@@ -99,6 +105,7 @@ async function main() {
     contracts: {
       settlementToken,
       creationBondPolicy,
+      alterfordForwarder,
       marketFactory,
       bountyFactory,
       challengeFactory,
@@ -242,6 +249,7 @@ async function deployWithFoundryKeystore() {
     coldWallet: chainConfig.coldWallet,
     deployedAt: new Date().toISOString(),
     startBlock: minBlockNumber([
+      contracts.alterfordForwarder,
       contracts.marketFactory,
       contracts.bountyFactory,
       contracts.challengeFactory,
@@ -281,6 +289,7 @@ async function readFoundryBroadcast(chainId, client, reusedContracts = {}) {
   const required = [
     ["settlementToken", "MockSettlementToken"],
     ["creationBondPolicy", "CreationBondPolicy"],
+    ["alterfordForwarder", "AlterfordForwarder"],
     ["marketFactory", "MarketFactory"],
     ["bountyFactory", "BountyFactory"],
     ["challengeFactory", "ChallengeFactory"],
