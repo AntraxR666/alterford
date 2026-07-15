@@ -1,7 +1,7 @@
 # Libro Maestro de Alterford
 
 Estado: fuente de verdad operativa del proyecto Alterford v1.2 en desarrollo, compatible con la Constitucion v1.1.
-Ultima actualizacion: 2026-07-14.
+Ultima actualizacion: 2026-07-15.
 Repositorio local: `C:\Users\Windows 11 Pro\Documents\apuestas`.
 
 Este documento consolida el estado real del proyecto, decisiones vigentes, arquitectura, contratos, despliegues, variables, comandos oficiales y pendientes. Debe actualizarse cada vez que cambien contratos, direcciones, red, arquitectura, scripts, credenciales no sensibles, checklist de produccion o estado de lanzamiento.
@@ -58,33 +58,34 @@ Terminado:
 - Indexer persistente implementado con store JSON, reorg handling, snapshots y endpoints read-only.
 - Frontend React/Vite conectado a wagmi/viem/WalletConnect/Reown, con soporte Vanilla/Underworld.
 - Indexer publico en Railway con `CONFIRMATIONS=6`, RPC privado y volumen persistente en `/data`.
-- PWA estatica publicada en IPFS mediante Pinata y validada desde dos gateways independientes.
+- Frontend PWA publico en Railway: `https://alterford-web-production.up.railway.app`.
+- PWA estatica final publicada en IPFS mediante Pinata con CID `bafybeih4oym45xk4nuq2hzrzbt52l6layaprxujm5mhkvf26g7dnnirjoi`.
 - Tests TypeScript y Solidity pasando en la ultima verificacion registrada.
 - Smoke E2E Base Sepolia historico del deployment Phase 1 completado con mercado `2`: mint, approve, create market, bet YES, bet NO, resolve y claim.
 - Smoke E2E Base Sepolia historico del deployment Phase 1 completado con reto `1`: mint, approve, create challenge, cancel y refund de bond/recompensa.
 - Indexer Railway actualizado al deployment Phase 2, sincronizado con `CONFIRMATIONS=6` y `0` errores; el nuevo read model inicia vacio desde el bloque `44168185`.
 - `AlterfordForwarder` EIP-2771 y `ChallengeFactory` con `_msgSender()` implementados, con nonce, deadline, domain separator dinamico y replay protection de OpenZeppelin.
 - Gateway server-only implementado con politica allowlist de acciones, simulacion previa, limites por wallet/IP/global, idempotencia y ledger persistente atomico.
-- Integracion vigente de Gelato Gasless (`@gelatocloud/gasless`), sin exponer `GELATO_API_KEY` al navegador.
+- Gateway publico en Railway: `https://alterford-gateway-production.up.railway.app`.
+- Integracion vigente de Biconomy MEE para relay gasless en Base Sepolia, sin exponer credenciales privadas al navegador.
 - MetaMask Embedded Wallets/Web3Auth integrado como conector social MPC opcional sin reemplazar MetaMask, Trust, Binance Web3 Wallet ni WalletConnect.
 - Fiat on-ramp Transak implementado mediante sesiones de backend de un solo uso; las credenciales privadas no entran al build estatico.
 - Las ocho acciones core permitidas de retos usan firma EIP-712 y relay patrocinado cuando el gateway esta activo; conservan ejecucion directa cuando no esta configurado.
 - Gateway Docker construido y health/config comprobados.
 - Verificacion Fase 2 local: `43` tests Foundry, `79` tests de paquetes TS y `36` tests de pipeline web, todos aprobados.
+- Smoke publico del `2026-07-15`: MetaMask conectada, approve confirmado, mercado `1` creado e indexado, apuesta `0.5 aUSDT` confirmada e indexada; indexer con `0` errores.
 
 No terminado o pendiente:
 
-- Ejecutar prueba E2E manual desde navegador con MetaMask/Reown: connect wallet -> approve -> create market -> bet -> resolve -> claim/refund.
+- Completar cuando venza el mercado publico `1` la parte diferida del smoke: resolve -> claim/refund.
 - Rotar API key de Basescan/Etherscan.
 - Crear wallet nueva para mainnet.
 - Ejecutar security scans estrictos con Slither, Echidna y Mythril instalados y `SECURITY_STRICT=1`.
 - Completar auditoria externa antes de Base Mainnet.
 - Revisar bundle splitting del frontend; Vite advierte chunks mayores a 500 kB.
-- Obtener/configurar `VITE_WEB3AUTH_CLIENT_ID` para activar login social.
-- Obtener/configurar `GELATO_API_KEY` para activar patrocinio de gas.
+- Completar una prueba de aceptacion humana del login social Web3Auth mediante email/OAuth y OTP.
 - Obtener/configurar credenciales Transak staging/production y dominio autorizado para activar fiat on-ramp.
-- Publicar el gateway Phase 2 como servicio persistente y configurar su URL publica en el frontend.
-- Publicar el build PWA actualizado con las direcciones Phase 2 en IPFS/hosting.
+- Verificar Trust Wallet, Binance Web3 Wallet y WalletConnect desde dispositivos reales adicionales.
 
 Descartado o reemplazado:
 
@@ -249,13 +250,15 @@ VITE_CHAIN_ID=84532
 VITE_LOCAL_RPC_URL=http://127.0.0.1:8545
 VITE_BASE_SEPOLIA_RPC_URL=https://sepolia.base.org
 VITE_WALLETCONNECT_PROJECT_ID=502d1a6819ee42e793e15c5f90603c42
-VITE_APP_URL=
+VITE_APP_URL=https://alterford-web-production.up.railway.app
 VITE_SETTLEMENT_TOKEN_ADDRESS=0x13e136d971ab620d94213725bd5e14944f71427c
 VITE_CREATION_BOND_POLICY_ADDRESS=0x7b881b34eb2319d4e52b29f5cb703a2d6a7c7278
-VITE_MARKET_FACTORY_ADDRESS=0xff999c9dce00afaed5c5ea37b5ff2b52f59b0954
-VITE_BOUNTY_FACTORY_ADDRESS=0xd1aa1350f7c6d75171eb1335064a2eb5738e0fca
-VITE_CHALLENGE_FACTORY_ADDRESS=0xa1e9487ab3f5b55766e7908f4113d9a61a213996
-VITE_INDEXER_URL=http://127.0.0.1:8787
+VITE_ALTERFORD_FORWARDER_ADDRESS=0x5021948dea935437edc26241d3354ffba901100c
+VITE_MARKET_FACTORY_ADDRESS=0x4810a24defe948b07950eced0426cce7a0cef540
+VITE_BOUNTY_FACTORY_ADDRESS=0x7888a4924c1cf6ad72ff0e570c4285478b03c1f1
+VITE_CHALLENGE_FACTORY_ADDRESS=0x61ad203a2eafd95002e5558381ebd04954706edd
+VITE_GATEWAY_URL=https://alterford-gateway-production.up.railway.app
+VITE_INDEXER_URL=https://web-production-73e1b.up.railway.app
 ```
 
 Variables Base Sepolia indexer generadas en `deployments/84532.indexer.env`:
@@ -263,11 +266,13 @@ Variables Base Sepolia indexer generadas en `deployments/84532.indexer.env`:
 ```text
 CHAIN_ID=84532
 RPC_URL=https://sepolia.base.org
-MARKET_FACTORY_ADDRESS=0xff999c9dce00afaed5c5ea37b5ff2b52f59b0954
-CHALLENGE_FACTORY_ADDRESS=0xa1e9487ab3f5b55766e7908f4113d9a61a213996
-INDEXER_STORE=data/alterford-84532-43727910.json
+MARKET_FACTORY_ADDRESS=0x4810a24defe948b07950eced0426cce7a0cef540
+BOUNTY_FACTORY_ADDRESS=0x7888a4924c1cf6ad72ff0e570c4285478b03c1f1
+CHALLENGE_FACTORY_ADDRESS=0x61ad203a2eafd95002e5558381ebd04954706edd
+BOUNTY_RECOVERY_VAULT_ADDRESS=0x66f2baf2ce2b177cf80f98b81870dac484eb1b45
+INDEXER_STORE=data/alterford-84532-44168185.json
 CONFIRMATIONS=6
-START_BLOCK=43727910
+START_BLOCK=44168185
 MAX_LOG_BLOCK_RANGE=2000
 PORT=8787
 POLL_INTERVAL_MS=12000
@@ -560,7 +565,8 @@ Antes de declarar production ready:
 - [x] Ejecutar `forge test`.
 - Ejecutar `forge coverage --ir-minimum`.
 - Ejecutar `SECURITY_STRICT=1 pnpm security:all`.
-- Completar flujo manual Base Sepolia desde navegador: connect wallet, approve, create market, bet, resolve, claim/refund.
+- [x] Completar flujo publico Base Sepolia desde navegador: connect wallet, approve, create market, indexar, bet e indexar.
+- Completar resolve y claim/refund del mercado publico cuando alcance sus timestamps on-chain.
 - [x] Ejecutar indexer Base Sepolia en modo normal con `CONFIRMATIONS=6` y confirmar `/health`, `/snapshot`, `/markets`.
 - [x] Validar persistencia del store mediante redeploy controlado.
 - Revisar alertas y runbook operativo.

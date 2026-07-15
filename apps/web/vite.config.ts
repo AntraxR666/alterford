@@ -6,6 +6,9 @@ const networkOnlyPattern = /(?:^|[./_-])(rpc|indexer|walletconnect|wallet-connec
 const localhostDependencyIds = [
   "/node_modules/@reown/appkit/",
   "/node_modules/@walletconnect/jsonrpc-utils/",
+  "/node_modules/@web3auth/",
+  "/node_modules/permissionless/",
+  "/node_modules/webauthn-p256/",
 ];
 
 export function sanitizeDependencyLocalhost(code: string, id: string) {
@@ -16,6 +19,7 @@ export function sanitizeDependencyLocalhost(code: string, id: string) {
 
 const productionDependencyUrls: Plugin = {
   name: "alterford-production-dependency-urls",
+  apply: "build",
   enforce: "pre",
   transform(code, id) {
     const sanitized = sanitizeDependencyLocalhost(code, id);

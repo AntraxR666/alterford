@@ -1,11 +1,21 @@
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { loadEnv } from "vite";
 import { runPnpm } from "./web-process.mjs";
 import { auditDist } from "./web-preflight.mjs";
 
-export async function buildStaticWeb({ run = runPnpm, distDir = resolve("apps", "web", "dist") } = {}) {
-  await run(["--filter", "@alterford/web", "build"], staticBuildEnvironment(process.env));
+export async function buildStaticWeb({
+  run = runPnpm,
+  distDir = resolve("apps", "web", "dist"),
+  env = staticBuildSourceEnvironment(),
+} = {}) {
+  await run(["--filter", "@alterford/web", "build"], staticBuildEnvironment(env));
   return auditDist(distDir);
+}
+
+export function staticBuildSourceEnvironment(processEnvironment = process.env) {
+  const webEnvironment = loadEnv("production", resolve("apps", "web"), "");
+  return { ...webEnvironment, ...processEnvironment };
 }
 
 export function staticBuildEnvironment(env = process.env) {

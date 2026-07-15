@@ -4,14 +4,14 @@ import { pathToFileURL } from "node:url";
 
 const textExtensions = new Set([".css", ".html", ".js", ".json", ".mjs", ".svg", ".txt", ".webmanifest", ".xml"]);
 const forbiddenContent = [
-  { name: "localhost literal", pattern: /\blocalhost\b/i },
+  { name: "localhost URL", pattern: /https?:\/\/localhost(?::\d+)?/i },
   { name: "loopback URL", pattern: /https?:\/\/(?:127(?:\.\d{1,3}){3}|0\.0\.0\.0|\[::1\])(?::\d+)?/i },
   { name: "PINATA_JWT deploy secret", pattern: /\bPINATA_JWT\b/i },
   { name: "PINNING_TOKEN deploy secret", pattern: /\bPINNING_TOKEN\b/i },
   { name: "Fleek deploy secret", pattern: /\b(?:FLEEK_(?:API_KEY|PAT|TOKEN)|PINNING_PROJECT_ID)\b/i },
   { name: "Irys deploy secret", pattern: /\bIRYS_(?:PRIVATE_KEY|WALLET)\b/i },
   { name: "private key", pattern: /\b(?:private[_-]?key|secret|key)\s*[:=]\s*["']0x[a-f\d]{64}["']/i },
-  { name: "source map reference", pattern: /(?:sourceMappingURL|sourceURL)\s*=/i },
+  { name: "source map reference", pattern: /sourceMappingURL\s*=/i },
 ];
 
 export async function auditDist(distDir = resolve("apps", "web", "dist")) {

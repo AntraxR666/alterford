@@ -150,7 +150,10 @@ export function App() {
     policy: DEFAULT_BOND_POLICY,
   });
   const web3 = useWeb3Flow(bondEstimate, quickBetAmount, isUnderworldMode, challengeBondEstimate, challengeStakeAmount);
-  const markets = useMemo(() => mergeMarkets(indexer.markets, sampleMarkets), [indexer.markets]);
+  const markets = useMemo(
+    () => import.meta.env.DEV ? mergeMarkets(indexer.markets, sampleMarkets) : indexer.markets,
+    [indexer.markets],
+  );
   const marketViews = useMemo(() => markets.map(toMarketViewModel), [markets]);
   const selectedMarketView = marketViews.find((market) => market.id === selectedMarketId) ?? marketViews[0];
   const quote = useMemo(
@@ -487,6 +490,12 @@ function MarketsView({
           </div>
           <span>{markets.length} disponibles</span>
         </div>
+        {markets.length === 0 && (
+          <div className="empty-state">
+            <strong>Aun no hay mercados abiertos</strong>
+            <span>Abre la seccion Crear para publicar el primer mercado verificable de la beta.</span>
+          </div>
+        )}
         {markets.map((market) => (
           <button
             className={selectedMarket?.id === market.id ? "market-row selected" : "market-row"}
@@ -513,16 +522,19 @@ function MarketsView({
       <aside className="trade-ticket">
         <p className="eyebrow">Ticket de prediccion</p>
         <h2>{selectedMarket?.title ?? "Selecciona un mercado"}</h2>
-        <p className="help-text">Conectar y autorizar no apuestan. Solo se mueve aUSDT cuando presionas Confirmar prediccion y aceptas en la wallet.</p>
-        <div className="yes-no">
+        {!selectedMarket ? (
+          <p className="help-text">El ticket se habilitara cuando exista un mercado abierto y selecciones una opcion.</p>
+        ) : <>
+          <p className="help-text">Conectar y autorizar no apuestan. Solo se mueve aUSDT cuando presionas Confirmar prediccion y aceptas en la wallet.</p>
+          <div className="yes-no">
           <button className={selectedOutcome === 0 ? "selected yes" : "yes"} onClick={() => onSelectOutcome(0)}>
             Si
           </button>
           <button className={selectedOutcome === 1 ? "selected no" : "no"} onClick={() => onSelectOutcome(1)}>
             No
           </button>
-        </div>
-        <div className="amount-row">
+          </div>
+          <div className="amount-row">
           {amountOptions.map((amount) => (
             <button
               className={quickBetAmount === amount ? "selected" : ""}
@@ -541,16 +553,16 @@ function MarketsView({
               ALL IN
             </button>
           )}
-        </div>
-        <button className="text-link" onClick={onToggleHighRoller}>
+          </div>
+          <button className="text-link" onClick={onToggleHighRoller}>
           {highRollerMode ? "Volver a montos rapidos" : "Modo High Roller"}
-        </button>
-        <div className="payout-hero">
+          </button>
+          <div className="payout-hero">
           <span>Ganancia neta estimada si aciertas</span>
           <strong>{quoteNetProfitLabel} aUSDT</strong>
           <small>{hasCounterLiquidity ? "Sale del pool del lado contrario, menos fee." : "Ahora no hay dinero del lado contrario; si ganas, recuperas tu stake pero el profit neto puede ser 0."}</small>
-        </div>
-        <div className="cost-box">
+          </div>
+          <div className="cost-box">
           <span>Costo al apostar</span>
           <strong>{quickBetAmountLabel} aUSDT</strong>
           <span>Recibes total si ganas</span>
@@ -560,19 +572,20 @@ function MarketsView({
           <span>Riesgo si pierdes</span>
           <strong>{quoteLossLabel} aUSDT</strong>
           <small>El retorno total incluye tu apuesta original. La ganancia real es el profit neto mostrado arriba.</small>
-        </div>
-        <PayoutExplainer
+          </div>
+          <PayoutExplainer
           selectedOutcome={selectedOutcome}
           sameSidePool={quoteSameSidePoolLabel}
           counterPool={quoteCounterPoolLabel}
           totalPool={quoteTotalPoolLabel}
-        />
-        <StepLine done={hasEnoughBalance} label="Tienes aUSDT suficiente para esta prediccion" action="Recibir aUSDT testnet" onAction={onAddFunds} />
-        <StepLine done={!needsApproval} label="Alterford esta autorizado para esta prediccion" action="Autorizar aUSDT" onAction={onApprove} />
-        <button className="primary-action" onClick={onBet} disabled={!hasEnoughBalance || needsApproval}>
+          />
+          <StepLine done={hasEnoughBalance} label="Tienes aUSDT suficiente para esta prediccion" action="Recibir aUSDT testnet" onAction={onAddFunds} />
+          <StepLine done={!needsApproval} label="Alterford esta autorizado para esta prediccion" action="Autorizar aUSDT" onAction={onApprove} />
+          <button className="primary-action" onClick={onBet} disabled={!hasEnoughBalance || needsApproval}>
           Confirmar prediccion <ChevronRight size={16} />
-        </button>
-        <TxState tx={tx} />
+          </button>
+          <TxState tx={tx} />
+        </>}
       </aside>
     </section>
   );

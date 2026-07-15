@@ -25,7 +25,6 @@ describe("web distribution preflight", () => {
 
   it.each([
     ["localhost URL", "assets/app.js", 'fetch("http://localhost:8787/events")', /localhost/i],
-    ["localhost literal", "assets/app.js", 'const host="localhost"', /localhost/i],
     ["loopback URL", "assets/app.js", 'fetch("http://127.0.0.1:8545")', /loopback/i],
     ["embedded deploy secret", "assets/app.js", 'const PINATA_JWT="eyJhbGciOiJIUzI1NiJ9.payload.signature"', /PINATA_JWT/i],
     ["private key", "assets/app.js", `const key="0x${"a".repeat(64)}"`, /private key/i],
@@ -38,6 +37,22 @@ describe("web distribution preflight", () => {
   it("rejects source map files even when they are not referenced", async () => {
     const dist = await fixture({ "index.html": "<main>Alterford</main>", "assets/app.js.map": "{}" });
     await expect(auditDist(dist)).rejects.toThrow(/app\.js\.map/i);
+  });
+
+  it("allows runtime sourceURL labels that do not publish source maps", async () => {
+    const dist = await fixture({
+      "index.html": "<main>Alterford</main>",
+      "assets/app.js": 'const label = "//# sourceURL=runtime-template";',
+    });
+    await expect(auditDist(dist)).resolves.toMatchObject({ ok: true });
+  });
+
+  it("allows bare localhost compatibility literals that are not network URLs", async () => {
+    const dist = await fixture({
+      "index.html": "<main>Alterford</main>",
+      "assets/app.js": 'const fallbackHost = "localhost";',
+    });
+    await expect(auditDist(dist)).resolves.toMatchObject({ ok: true });
   });
 });
 

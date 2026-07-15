@@ -628,6 +628,28 @@ button {
   margin-bottom: 10px;
 }
 
+.empty-state {
+  display: grid;
+  gap: 6px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  padding: 20px;
+  color: #475569;
+}
+
+.empty-state strong {
+  color: #0f172a;
+}
+
+.underworld .empty-state {
+  border-color: #29405b;
+  color: #8aa4b8;
+}
+
+.underworld .empty-state strong {
+  color: #e2f7ff;
+}
+
 .market-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

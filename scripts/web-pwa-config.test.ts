@@ -49,6 +49,11 @@ describe("static PWA configuration", () => {
     const source = 'export const url = "http://localhost:3000";';
     expect(sanitizeDependencyLocalhost(source, "/node_modules/@reown/appkit/constants.js")).not.toContain("localhost");
     expect(sanitizeDependencyLocalhost(source, "/node_modules/@walletconnect/jsonrpc-utils/url.js")).not.toContain("localhost");
+    expect(sanitizeDependencyLocalhost(source, "/node_modules/@web3auth/ws-embed/embed.js")).not.toContain("localhost");
+    expect(sanitizeDependencyLocalhost(source, "/node_modules/permissionless/accounts/kernel.js")).not.toContain("localhost");
+    expect(sanitizeDependencyLocalhost(source, "/node_modules/webauthn-p256/verify.js")).not.toContain("localhost");
+    expect(sanitizeDependencyLocalhost(source, "/node_modules/engine.io-client/build/socket.js")).toBe(source);
+    expect(sanitizeDependencyLocalhost(source, "/node_modules/ox/core/Siwe.js")).toBe(source);
     expect(sanitizeDependencyLocalhost(source, "/src/config.ts")).toBe(source);
   });
 
