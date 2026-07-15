@@ -55,4 +55,20 @@ describe("AlterfordGatewayClient", () => {
 
     await expect(client.relayStatus("bad-task")).rejects.toThrow("Policy rejected request");
   });
+
+  it("does not invoke browser fetch with the gateway client as its receiver", async () => {
+    const fetcher = vi.fn(function (this: unknown) {
+      if (this !== undefined) throw new TypeError("Illegal invocation");
+      return Promise.resolve(new Response(JSON.stringify({
+        chainId: 84532,
+        challengeFactory: address,
+        forwarder: address,
+        relayEnabled: true,
+        fiatEnabled: false,
+      }), { status: 200 }));
+    });
+    const client = new AlterfordGatewayClient("https://gateway.example", fetcher as typeof fetch);
+
+    await expect(client.config()).resolves.toMatchObject({ chainId: 84532, relayEnabled: true });
+  });
 });

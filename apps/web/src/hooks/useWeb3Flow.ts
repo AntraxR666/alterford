@@ -243,7 +243,6 @@ export function useWeb3Flow(
       return;
     }
 
-    let signatureStarted = false;
     try {
       if (!onTargetChain) {
         const switched = await switchToTargetChain();
@@ -267,7 +266,6 @@ export function useWeb3Flow(
       ) {
         throw new Error("El gateway devolvio una solicitud de patrocinio invalida.");
       }
-      signatureStarted = true;
       const signature = await signTypedDataAsync(
         buildForwardRequestTypedData(desiredChainId, forwarder, request),
       );
@@ -281,10 +279,6 @@ export function useWeb3Flow(
       setTx({ status: "confirmed", label: `${label}: confirmado sin gas`, hash: result.transactionHash });
       await Promise.allSettled([balance.refetch(), allowance.refetch(), challengeAllowance.refetch()]);
     } catch (error) {
-      if (!signatureStarted) {
-        await runTx(`${label} (gas propio)`, directAction);
-        return;
-      }
       setTx({ status: "failed", label, error: readableError(error) });
     }
   }

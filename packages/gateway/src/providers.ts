@@ -1,9 +1,20 @@
 import { createGelatoEvmRelayerClient } from "@gelatocloud/gasless";
 import {
+  createMeeClient,
+  getDefaultMeeGasTank,
+  getDefaultMEENetworkApiKey,
+  getDefaultMEENetworkUrl,
+  getMEEVersion,
+  MEEVersion,
+  toMultichainNexusAccount,
+} from "@biconomy/abstractjs";
+import {
   alterfordForwarderAbi,
   type SignedForwardRequest,
 } from "@alterford/sdk";
-import type { Address, Hex } from "viem";
+import { http, type Address, type Hex } from "viem";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
+import { baseSepolia } from "viem/chains";
 import type { GatewayChain, RelayProvider } from "./service.js";
 
 interface GelatoClientLike {
@@ -23,6 +34,75 @@ interface GelatoClientLike {
 interface PublicClientLike {
   readContract(parameters: Record<string, unknown>): Promise<unknown>;
   simulateContract(parameters: Record<string, unknown>): Promise<unknown>;
+}
+
+interface BiconomyClientLike {
+  execute(parameters: {
+    instructions: Array<{
+      chainId: number;
+      calls: Array<{ to: Address; data: Hex; value: bigint }>;
+    }>;
+    sponsorship: true;
+    sponsorshipOptions?: unknown;
+  }): Promise<{ hash: Hex }>;
+  getSupertransactionReceipt(parameters: { hash: Hex }): Promise<{
+    transactionStatus: "PENDING" | "MINING" | "SUCCESS" | "MINED_SUCCESS" | "MINED_FAIL" | "FAILED" | "EXPIRED";
+    receipts?: Array<{ transactionHash?: Hex }> | null;
+  }>;
+}
+
+export class BiconomyRelayAdapter implements RelayProvider {
+  constructor(
+    private readonly client: BiconomyClientLike,
+    private readonly sponsorshipOptions?: unknown,
+  ) {}
+
+  async submit(transaction: { chainId: number; to: Address; data: Hex }) {
+    const result = await this.client.execute({
+      instructions: [{
+        chainId: transaction.chainId,
+        calls: [{ to: transaction.to, data: transaction.data, value: 0n }],
+      }],
+      sponsorship: true,
+      ...(this.sponsorshipOptions ? { sponsorshipOptions: this.sponsorshipOptions } : {}),
+    });
+    return { taskId: result.hash };
+  }
+
+  async status(taskId: string) {
+    const receipt = await this.client.getSupertransactionReceipt({ hash: taskId as Hex });
+    if (receipt.transactionStatus === "MINED_SUCCESS" || receipt.transactionStatus === "SUCCESS") {
+      return {
+        state: "confirmed" as const,
+        transactionHash: receipt.receipts?.find((item) => item.transactionHash)?.transactionHash,
+      };
+    }
+    if (receipt.transactionStatus === "PENDING" || receipt.transactionStatus === "MINING") {
+      return { state: "pending" as const };
+    }
+    return { state: "failed" as const };
+  }
+}
+
+export async function createBiconomyTestnetRelayAdapter(rpcUrl: string) {
+  const signer = privateKeyToAccount(generatePrivateKey());
+  const account = await toMultichainNexusAccount({
+    signer,
+    chainConfigurations: [{
+      chain: baseSepolia,
+      transport: http(rpcUrl),
+      version: getMEEVersion(MEEVersion.V2_1_0),
+    }],
+  });
+  const client = await createMeeClient({
+    account,
+    url: getDefaultMEENetworkUrl(true),
+    apiKey: getDefaultMEENetworkApiKey(true),
+  });
+  return new BiconomyRelayAdapter(client as unknown as BiconomyClientLike, {
+    url: getDefaultMEENetworkUrl(true),
+    gasTank: getDefaultMeeGasTank(true),
+  });
 }
 
 export class GelatoRelayAdapter implements RelayProvider {

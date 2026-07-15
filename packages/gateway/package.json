@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@alterford/sdk": "workspace:*",
+    "@biconomy/abstractjs": "^1.2.5",
     "@gelatocloud/gasless": "0.0.12",
     "viem": "^2.45.0"
   }

@@ -14,6 +14,7 @@ const env = [
   `RPC_URL=${deployment.rpcUrl}`,
   `CHALLENGE_FACTORY_ADDRESS=${challengeFactory}`,
   `ALTERFORD_FORWARDER_ADDRESS=${forwarder}`,
+  `RELAY_PROVIDER=${process.env.RELAY_PROVIDER || (String(deployment.chainId) === "84532" ? "biconomy" : "disabled")}`,
   `GATEWAY_ALLOWED_ORIGINS=${process.env.GATEWAY_ALLOWED_ORIGINS || "http://127.0.0.1:5173,http://localhost:5173"}`,
   `GATEWAY_LEDGER_PATH=${process.env.GATEWAY_LEDGER_PATH || "data/sponsorship-ledger.json"}`,
   `RELAY_REQUEST_TTL_SECONDS=${process.env.RELAY_REQUEST_TTL_SECONDS || "600"}`,
@@ -22,7 +23,7 @@ const env = [
   `RELAY_WALLET_DAILY_LIMIT=${process.env.RELAY_WALLET_DAILY_LIMIT || "20"}`,
   `RELAY_IP_HOURLY_LIMIT=${process.env.RELAY_IP_HOURLY_LIMIT || "100"}`,
   `PORT=${process.env.GATEWAY_PORT || "8790"}`,
-  "# Add GELATO_API_KEY and Transak credentials only in the server secret store.",
+  "# Biconomy staging needs no API key on Base Sepolia. Add provider or Transak secrets only in the server secret store.",
   "",
 ].join("\n");
 

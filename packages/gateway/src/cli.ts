@@ -1,6 +1,11 @@
 import { createPublicClient, http, isAddress, type Address } from "viem";
 import { base, baseSepolia } from "viem/chains";
-import { createGelatoRelayAdapter, ViemGatewayChain } from "./providers.js";
+import {
+  createBiconomyTestnetRelayAdapter,
+  createGelatoRelayAdapter,
+  ViemGatewayChain,
+} from "./providers.js";
+import { resolveRelayProvider } from "./relayConfig.js";
 import { GatewayService, type RelayProvider } from "./service.js";
 import { startGatewayServer } from "./server.js";
 import { TransakProvider } from "./transak.js";
@@ -16,9 +21,16 @@ if (chain.id !== chainId) throw new Error(`Unsupported gateway chain ${chainId}.
 
 const publicClient = createPublicClient({ chain, transport: http(rpcUrl) });
 const gelatoKey = process.env.GELATO_API_KEY?.trim();
-const relay: RelayProvider = gelatoKey
-  ? createGelatoRelayAdapter(gelatoKey, chainId !== base.id)
-  : disabledRelay();
+const relayProvider = resolveRelayProvider({
+  chainId,
+  provider: process.env.RELAY_PROVIDER,
+  gelatoKey,
+});
+const relay: RelayProvider = relayProvider === "biconomy"
+  ? await createBiconomyTestnetRelayAdapter(rpcUrl)
+  : relayProvider === "gelato"
+    ? createGelatoRelayAdapter(gelatoKey!, chainId !== base.id)
+    : disabledRelay();
 const transak = transakProvider();
 const sponsorshipConfig = {
   globalDailyLimit: numberEnv("RELAY_GLOBAL_DAILY_LIMIT", 10_000),
@@ -55,7 +67,7 @@ const server = startGatewayServer(service, {
     chainId,
     challengeFactory,
     forwarder,
-    relayEnabled: Boolean(gelatoKey),
+    relayEnabled: relayProvider !== "disabled",
     fiatEnabled: Boolean(transak),
   },
 });
@@ -65,7 +77,8 @@ console.log(JSON.stringify({
   event: "gateway_started",
   port: numberEnv("PORT", 8790),
   chainId,
-  relayEnabled: Boolean(gelatoKey),
+  relayEnabled: relayProvider !== "disabled",
+  relayProvider,
   fiatEnabled: Boolean(transak),
   ledgerPath,
 }));
@@ -92,7 +105,7 @@ function transakProvider() {
 
 function disabledRelay(): RelayProvider {
   return {
-    submit: async () => { throw new Error("Gelato sponsorship is not configured."); },
+    submit: async () => { throw new Error("Transaction sponsorship is not configured."); },
     status: async () => ({ state: "failed" }),
   };
 }
