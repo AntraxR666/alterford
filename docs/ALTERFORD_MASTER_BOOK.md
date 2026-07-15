@@ -35,7 +35,7 @@ Principios no negociables:
 
 Alterford v1.1 esta en estado MVP on-chain desplegado en Base Sepolia.
 
-La Fase 1 de Alterford v1.2 esta desplegada. La Fase 2 de conversion y abstraccion esta implementada y verificada localmente, pero aun no esta desplegada en Base Sepolia.
+Las Fases 1 y 2 de Alterford v1.2 estan implementadas y desplegadas en Base Sepolia. La activacion comercial de login social, relay gasless y fiat on-ramp sigue condicionada a credenciales externas.
 
 Terminado:
 
@@ -47,8 +47,8 @@ Terminado:
 - Deploy local Anvil funcional.
 - Deploy Base Sepolia funcional mediante Foundry Keystore y `forge script --account`.
 - `PRIVATE_KEY` eliminado del flujo Base Sepolia. Solo queda como compatibilidad opcional para Anvil/local.
-- Deployment Phase 1 real en Base Sepolia actualizado el `2026-07-14T10:42:43.348Z`.
-- Seis contratos desplegados y verificados en BaseScan, incluido `BountyRecoveryVault`.
+- Deployment Phase 2 real en Base Sepolia actualizado el `2026-07-15T08:37:47.135Z`.
+- Siete contratos desplegados y verificados en BaseScan, incluidos `AlterfordForwarder` y `BountyRecoveryVault`.
 - Consejo de seguridad desplegado como Safe `2-de-2`, separado de la cold wallet.
 - ABIs exportadas.
 - Frontend env generado para Base Sepolia.
@@ -60,9 +60,9 @@ Terminado:
 - Indexer publico en Railway con `CONFIRMATIONS=6`, RPC privado y volumen persistente en `/data`.
 - PWA estatica publicada en IPFS mediante Pinata y validada desde dos gateways independientes.
 - Tests TypeScript y Solidity pasando en la ultima verificacion registrada.
-- Smoke E2E Base Sepolia completado con mercado `2`: mint, approve, create market, bet YES, bet NO, resolve y claim.
-- Smoke E2E Base Sepolia completado con reto `1`: mint, approve, create challenge, cancel y refund de bond/recompensa.
-- Indexer Base Sepolia validado contra eventos reales del deployment actual: `2` markets, `3` bets, `1` claim, `3` bonds y `0` errores.
+- Smoke E2E Base Sepolia historico del deployment Phase 1 completado con mercado `2`: mint, approve, create market, bet YES, bet NO, resolve y claim.
+- Smoke E2E Base Sepolia historico del deployment Phase 1 completado con reto `1`: mint, approve, create challenge, cancel y refund de bond/recompensa.
+- Indexer Railway actualizado al deployment Phase 2, sincronizado con `CONFIRMATIONS=6` y `0` errores; el nuevo read model inicia vacio desde el bloque `44168185`.
 - `AlterfordForwarder` EIP-2771 y `ChallengeFactory` con `_msgSender()` implementados, con nonce, deadline, domain separator dinamico y replay protection de OpenZeppelin.
 - Gateway server-only implementado con politica allowlist de acciones, simulacion previa, limites por wallet/IP/global, idempotencia y ledger persistente atomico.
 - Integracion vigente de Gelato Gasless (`@gelatocloud/gasless`), sin exponer `GELATO_API_KEY` al navegador.
@@ -80,12 +80,11 @@ No terminado o pendiente:
 - Ejecutar security scans estrictos con Slither, Echidna y Mythril instalados y `SECURITY_STRICT=1`.
 - Completar auditoria externa antes de Base Mainnet.
 - Revisar bundle splitting del frontend; Vite advierte chunks mayores a 500 kB.
-- Reimportar la wallet testnet en Foundry Keystore: el preflight actual no encuentra `FOUNDRY_ACCOUNT`; existe el password file antiguo, pero no una cuenta visible en el keystore estandar.
-- Exportar `SECURITY_COUNCIL_ADDRESS`, `COLD_WALLET_ADDRESS`, `FOUNDRY_ACCOUNT` y `FOUNDRY_PASSWORD_FILE` para el siguiente release.
 - Obtener/configurar `VITE_WEB3AUTH_CLIENT_ID` para activar login social.
 - Obtener/configurar `GELATO_API_KEY` para activar patrocinio de gas.
 - Obtener/configurar credenciales Transak staging/production y dominio autorizado para activar fiat on-ramp.
-- Redesplegar Fase 2 en Base Sepolia. El deployment actual no contiene `AlterfordForwarder` y su `ChallengeFactory` no confia en el forwarder nuevo.
+- Publicar el gateway Phase 2 como servicio persistente y configurar su URL publica en el frontend.
+- Publicar el build PWA actualizado con las direcciones Phase 2 en IPFS/hosting.
 
 Descartado o reemplazado:
 
@@ -170,16 +169,17 @@ RPC: `https://sepolia.base.org`.
 Explorer: `https://sepolia.basescan.org`.
 Deployer: `0x6Bb15228CFC4CA9f39FD76EA1dbF98A9E53be772`.
 Deployment manifest: `deployments/84532.json`.
-Fecha de deploy: `2026-07-14T10:42:43.348Z`.
+Fecha de deploy: `2026-07-15T08:37:47.135Z`.
 
 | Modulo | Address | Tx hash | Verificacion |
 |---|---:|---:|---|
 | MockSettlementToken | `0x13e136d971ab620d94213725bd5e14944f71427c` | `0xd5e2271a70ad4e44dbe9e06ab8d52b89302f5660aaab128ec770f8914980f14c` | Verificado |
 | CreationBondPolicy | `0x7b881b34eb2319d4e52b29f5cb703a2d6a7c7278` | `0xcba5f9c6be7725954861a433c95ebdbe5e958ce2842dd3f9d375567797784694` | Verificado |
-| MarketFactory | `0xa2ea9723c545a50336aea8e64a0f6b9594a86978` | `0x0307cc8c89715c41804e514404628bd86f43e73745d25ae6fdf02f10fd3ec59e` | Verificado |
-| BountyFactory | `0x0643e5f35c826eb64ac96dc054933d11819507c2` | `0x94f837bf4b521efa55e4e92b3ed99483d3496cf3d0a48a7237151bd297b024fb` | Verificado |
-| ChallengeFactory | `0x5dea84f8d244c14860134131513b8fc2db24775b` | `0x9d96fbfe06b8252ac40e4c579ac324e5bfcc20c7b2642263e666f569c5cfdf4b` | Verificado |
-| BountyRecoveryVault | `0x3af298012953e4cc3cfc5d3942059842041fcfab` | `0x004e43cc496bc7fd4bc69857eb307f393e550a1026b959d057aaaa6a614c58b0` | Verificado |
+| AlterfordForwarder | `0x5021948dea935437edc26241d3354ffba901100c` | `0x9a9c04c55453fc90f56357335df3c606733be7acab6fa785282419f3ff8e7ede` | Verificado |
+| MarketFactory | `0x4810a24defe948b07950eced0426cce7a0cef540` | `0x92b901e92beafe7cab7d928553be3f7fccaa1dc6de81268cbe595affbce0586d` | Verificado |
+| BountyFactory | `0x7888a4924c1cf6ad72ff0e570c4285478b03c1f1` | `0x5c96852fae8ccdfff8488bcc6d6c04d1a89f53e474631af531ae57575d6fbcb1` | Verificado |
+| ChallengeFactory | `0x61ad203a2eafd95002e5558381ebd04954706edd` | `0xd9c628be18ec31f7b68f0feaf33c8cd2a99354366919d8b900122c98bec89086` | Verificado |
+| BountyRecoveryVault | `0x66f2baf2ce2b177cf80f98b81870dac484eb1b45` | `0x27b5c0fbfaeea99b181e345729fd628e9b6b31f15b4f5fa5d909fb3fdb03ca5b` | Verificado |
 
 Gobernanza de emergencia Phase 1:
 
@@ -191,9 +191,10 @@ Bytecode confirmado por RPC despues del deploy:
 
 - MockSettlementToken: `1477` bytes.
 - CreationBondPolicy: `4078` bytes.
+- AlterfordForwarder: `3540` bytes.
 - MarketFactory: `11040` bytes.
 - BountyFactory: `7217` bytes.
-- ChallengeFactory: `16435` bytes.
+- ChallengeFactory: `17621` bytes.
 - BountyRecoveryVault: `1636` bytes.
 
 ## Wallet Oficial De Testnet
@@ -203,8 +204,8 @@ Uso: deployer Base Sepolia y pruebas testnet.
 - Address publica: `0x6Bb15228CFC4CA9f39FD76EA1dbF98A9E53be772`.
 - Foundry account: `alterford-base-sepolia`.
 - Keystore: Foundry encrypted keystore local.
-- Password file local usado por scripts: `/home/telecom/.alterford/foundry-password.txt`.
-- Saldo despues del deploy y smoke: `0.090928455819974892 ETH` en Base Sepolia.
+- Password file local usado por scripts: `C:\Users\Windows 11 Pro\.foundry\alterford-phase2-password.txt`.
+- Saldo despues del deploy Phase 2: `0.090736426085800153 ETH` en Base Sepolia.
 - Advertencia: esta wallet debe considerarse comprometida por exposicion de private key en conversacion. No usar en mainnet.
 
 ## Redes
@@ -469,8 +470,8 @@ Estado:
 - Soporta listener, projections, persistent store, reorg checks, snapshots y API read-only.
 - Base Sepolia env generado en `deployments/84532.indexer.env`.
 - Servicio publico: `https://web-production-73e1b.up.railway.app`.
-- Base Sepolia usa `START_BLOCK=44128734`, bloque inicial del deployment Phase 1.
-- El plan RPC actual limita `eth_getLogs` a cinco bloques; Railway usa `MAX_LOG_BLOCK_RANGE=5`.
+- Base Sepolia usa `START_BLOCK=44168185`, bloque inicial del deployment Phase 2.
+- Railway usa `MAX_LOG_BLOCK_RANGE=2000` con el RPC configurado actualmente.
 - Opera con `CONFIRMATIONS=6`, polling de 12 segundos y volumen persistente Railway en `/data`.
 - Persistencia verificada mediante redeploy: journal y cursor sobrevivieron al reinicio, cadena `84532`, cero errores.
 

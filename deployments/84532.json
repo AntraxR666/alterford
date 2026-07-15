@@ -5,8 +5,8 @@
   "deployer": "0x6Bb15228CFC4CA9f39FD76EA1dbF98A9E53be772",
   "securityCouncil": "0xcDe52A6D1c4bb32Aed4FA5C4489AbF32e237620b",
   "coldWallet": "0xec463C1CB5a8D4bf21B75505DAEccBC12C6E3bb7",
-  "deployedAt": "2026-07-14T10:42:43.348Z",
-  "startBlock": 44128734,
+  "deployedAt": "2026-07-15T08:37:47.135Z",
+  "startBlock": 44168185,
   "contracts": {
     "settlementToken": {
       "address": "0x13e136d971ab620d94213725bd5e14944f71427c",
@@ -20,28 +20,34 @@
       "artifact": "CreationBondPolicy.sol/CreationBondPolicy.json",
       "blockNumber": 43727911
     },
+    "alterfordForwarder": {
+      "address": "0x5021948dea935437edc26241d3354ffba901100c",
+      "txHash": "0x9a9c04c55453fc90f56357335df3c606733be7acab6fa785282419f3ff8e7ede",
+      "blockNumber": 44168185,
+      "artifact": "AlterfordForwarder.sol/AlterfordForwarder.json"
+    },
     "marketFactory": {
-      "address": "0xa2ea9723c545a50336aea8e64a0f6b9594a86978",
-      "txHash": "0x0307cc8c89715c41804e514404628bd86f43e73745d25ae6fdf02f10fd3ec59e",
-      "blockNumber": 44128734,
+      "address": "0x4810a24defe948b07950eced0426cce7a0cef540",
+      "txHash": "0x92b901e92beafe7cab7d928553be3f7fccaa1dc6de81268cbe595affbce0586d",
+      "blockNumber": 44168186,
       "artifact": "MarketFactory.sol/MarketFactory.json"
     },
     "bountyFactory": {
-      "address": "0x0643e5f35c826eb64ac96dc054933d11819507c2",
-      "txHash": "0x94f837bf4b521efa55e4e92b3ed99483d3496cf3d0a48a7237151bd297b024fb",
-      "blockNumber": 44128738,
+      "address": "0x7888a4924c1cf6ad72ff0e570c4285478b03c1f1",
+      "txHash": "0x5c96852fae8ccdfff8488bcc6d6c04d1a89f53e474631af531ae57575d6fbcb1",
+      "blockNumber": 44168190,
       "artifact": "BountyFactory.sol/BountyFactory.json"
     },
     "challengeFactory": {
-      "address": "0x5dea84f8d244c14860134131513b8fc2db24775b",
-      "txHash": "0x9d96fbfe06b8252ac40e4c579ac324e5bfcc20c7b2642263e666f569c5cfdf4b",
-      "blockNumber": 44128736,
+      "address": "0x61ad203a2eafd95002e5558381ebd04954706edd",
+      "txHash": "0xd9c628be18ec31f7b68f0feaf33c8cd2a99354366919d8b900122c98bec89086",
+      "blockNumber": 44168188,
       "artifact": "ChallengeFactory.sol/ChallengeFactory.json"
     },
     "bountyRecoveryVault": {
-      "address": "0x3af298012953e4cc3cfc5d3942059842041fcfab",
-      "txHash": "0x004e43cc496bc7fd4bc69857eb307f393e550a1026b959d057aaaa6a614c58b0",
-      "blockNumber": 44128737,
+      "address": "0x66f2baf2ce2b177cf80f98b81870dac484eb1b45",
+      "txHash": "0x27b5c0fbfaeea99b181e345729fd628e9b6b31f15b4f5fa5d909fb3fdb03ca5b",
+      "blockNumber": 44168189,
       "artifact": "BountyRecoveryVault.sol/BountyRecoveryVault.json"
     }
   }
