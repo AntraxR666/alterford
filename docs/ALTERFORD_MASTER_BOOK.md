@@ -59,7 +59,7 @@ Terminado:
 - Frontend React/Vite conectado a wagmi/viem/WalletConnect/Reown, con soporte Vanilla/Underworld.
 - Indexer publico en Railway con `CONFIRMATIONS=6`, RPC privado y volumen persistente en `/data`.
 - Frontend PWA publico en Railway: `https://alterford-web-production.up.railway.app`.
-- PWA estatica final publicada en IPFS mediante Pinata con CID `bafybeih4oym45xk4nuq2hzrzbt52l6layaprxujm5mhkvf26g7dnnirjoi`.
+- PWA estatica final publicada en IPFS mediante Pinata con CID `bafybeighmwesy6luned6iglmmfygt4mjscsvcxjht7xf3x5dtznqcn6esa`.
 - Tests TypeScript y Solidity pasando en la ultima verificacion registrada.
 - Smoke E2E Base Sepolia historico del deployment Phase 1 completado con mercado `2`: mint, approve, create market, bet YES, bet NO, resolve y claim.
 - Smoke E2E Base Sepolia historico del deployment Phase 1 completado con reto `1`: mint, approve, create challenge, cancel y refund de bond/recompensa.
@@ -80,7 +80,7 @@ No terminado o pendiente:
 - Completar cuando venza el mercado publico `1` la parte diferida del smoke: resolve -> claim/refund.
 - Rotar API key de Basescan/Etherscan.
 - Crear wallet nueva para mainnet.
-- Ejecutar security scans estrictos con Slither, Echidna y Mythril instalados y `SECURITY_STRICT=1`.
+- Integrar la ejecucion Docker reproducible de Echidna y Mythril en `security:all`; los tres analizadores ya fueron ejecutados manualmente contra el estado actual.
 - Completar auditoria externa antes de Base Mainnet.
 - Revisar bundle splitting del frontend; Vite advierte chunks mayores a 500 kB.
 - Completar una prueba de aceptacion humana del login social Web3Auth mediante email/OAuth y OTP.
@@ -427,9 +427,9 @@ Estado UX:
 - Balance, allowance, approve, create market, bet, resolve, claim/refund integrados a hooks web3.
 - Frontend usa direcciones desde env generado.
 - Build estatico agnostico publicado mediante Pinata.
-- CID: `bafybeiebkyk5z3mjqjkwl5cnrb6fbx25cx2qrh6pfulwq7npt3n5ozqun4`.
-- Gateway primario de prueba: `https://ipfs.io/ipfs/bafybeiebkyk5z3mjqjkwl5cnrb6fbx25cx2qrh6pfulwq7npt3n5ozqun4/`.
-- Gateway alternativo: `https://bafybeiebkyk5z3mjqjkwl5cnrb6fbx25cx2qrh6pfulwq7npt3n5ozqun4.ipfs.dweb.link/`.
+- CID: `bafybeighmwesy6luned6iglmmfygt4mjscsvcxjht7xf3x5dtznqcn6esa`.
+- Gateway primario de prueba: `https://ipfs.io/ipfs/bafybeighmwesy6luned6iglmmfygt4mjscsvcxjht7xf3x5dtznqcn6esa/`.
+- Gateway alternativo: `https://bafybeighmwesy6luned6iglmmfygt4mjscsvcxjht7xf3x5dtznqcn6esa.ipfs.dweb.link/`.
 - Manifest, service worker, bundle e indexer publico validados desde ambos gateways.
 
 Archivos clave:
@@ -522,10 +522,14 @@ Ultima verificacion conocida:
 - `pnpm test`: paso.
 - `pnpm build`: paso con warnings de bundle.
 - `forge build`: paso con warnings de timestamp.
-- `forge test`: paso, `40/40`.
-- `pnpm test`: paso, `55/55`.
-- `pnpm test:web:pipeline`: paso, `36/36`.
-- Slither: paso sobre 73 contratos y 98 detectores, `0` resultados.
+- `forge test`: paso, `43/43`.
+- `pnpm test`: paso, `86/86`.
+- `pnpm test:web:pipeline`: paso, `37/37`.
+- Slither: paso sobre 82 contratos y 98 detectores, `0` resultados.
+- Echidna: paso con 20,041 secuencias; las tres propiedades economicas reportaron `passing`.
+- Mythril: analisis fuente de `MarketFactory`, `BountyFactory`, `ChallengeFactory` y `Treasury` con Solidity 0.8.28, optimizer y `viaIR`; `0` issues detectados.
+- Foundry coverage: 70.88% lineas, 63.55% statements, 21.62% branches y 80.92% funciones; no se agregaron tests artificiales para elevar cifras.
+- Responsive publico: 390x844, 768x1024 y 1440x900 sin overflow horizontal ni controles fuera del viewport.
 - `pnpm web:env:check 84532`: paso.
 - Verificacion BaseScan: paso para 6/6 contratos del deployment actual.
 - Smoke E2E Base Sepolia on-chain: paso.
@@ -537,7 +541,7 @@ Warnings conocidos:
 - Foundry reporta `block.timestamp` en comparaciones de deadlines, lock times, resolution times y subscriptions. Aceptado para MVP, debe revisarse en auditoria.
 - Vite reporta chunks mayores a 500 kB. No bloquea MVP, pero debe optimizarse antes de produccion publica.
 - Tests frontend pueden mostrar warnings de WalletConnect/Reown si se usa project id de desarrollo o metadata local.
-- Echidna y Mythril no estan instalados en el entorno actual; sus scans fueron omitidos y siguen pendientes antes de mainnet.
+- Echidna y Mythril se ejecutaron mediante sus contenedores oficiales; falta incorporar ese fallback Docker al comando agregado `security:all`.
 
 ## Decisiones Historicas
 
@@ -571,8 +575,8 @@ Antes de declarar production ready:
 - [x] Validar persistencia del store mediante redeploy controlado.
 - Revisar alertas y runbook operativo.
 - [x] Publicar frontend PWA en IPFS staging.
-- Verificar wallets reales: MetaMask, Trust Wallet, Binance Web3 Wallet y WalletConnect.
-- Revisar UX mobile Android/iOS/Huawei sin GMS.
+- Verificar wallets reales adicionales: Trust Wallet, Binance Web3 Wallet y WalletConnect. MetaMask Base Sepolia ya fue comprobada.
+- [x] Revisar layout responsive en viewports mobile, tablet y desktop; queda la aceptacion en dispositivos Android/iOS/Huawei fisicos.
 - Obtener auditoria externa.
 - Preparar deployment plan Base Mainnet con rollback.
 
