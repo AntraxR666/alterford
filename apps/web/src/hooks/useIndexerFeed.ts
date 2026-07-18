@@ -23,8 +23,8 @@ export function useIndexerFeed(): IndexerFeed {
     async function load() {
       try {
         const [marketsResponse, challengesResponse] = await Promise.all([
-          fetch(`${baseUrl}/markets`, { signal: controller.signal }),
-          fetch(`${baseUrl}/challenges`, { signal: controller.signal }),
+          fetch(`${baseUrl}/markets`, { cache: "no-store", signal: controller.signal }),
+          fetch(`${baseUrl}/challenges`, { cache: "no-store", signal: controller.signal }),
         ]);
         if (!marketsResponse.ok) throw new Error(`Indexer markets responded ${marketsResponse.status}`);
         if (!challengesResponse.ok) throw new Error(`Indexer challenges responded ${challengesResponse.status}`);

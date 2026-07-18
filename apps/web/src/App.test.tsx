@@ -68,6 +68,24 @@ describe("Alterford PWA shell", () => {
     expect(screen.queryByRole("button", { name: /Confirmar prediccion/i })).not.toBeInTheDocument();
   });
 
+  it("always refreshes lifecycle data from the indexer", async () => {
+    vi.stubEnv("VITE_INDEXER_URL", "https://indexer.example");
+    const requestOptions: RequestInit[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/markets") || url.endsWith("/challenges")) {
+        requestOptions.push(init ?? {});
+        return new Response(JSON.stringify([]));
+      }
+      return new Response("Not found", { status: 404 });
+    }));
+
+    renderWithProviders();
+
+    await waitFor(() => expect(requestOptions).toHaveLength(2));
+    expect(requestOptions.every((options) => options.cache === "no-store")).toBe(true);
+  });
+
   it("shows create wizard and switches to Underworld mode", async () => {
     const user = userEvent.setup();
     renderWithProviders();
