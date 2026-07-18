@@ -38,15 +38,28 @@ function presentation(
 export function marketAvailability(market: MarketDTO, nowSeconds: number): LifecycleAvailability {
   if (market.state === "Open") {
     const lockTime = timestampSeconds(market.lockTime);
+    const resolutionTime = timestampSeconds(market.resolutionTime);
+    if (resolutionTime !== undefined && nowSeconds >= resolutionTime) {
+      return presentation("resolution", "Listo para resolver", true, "high");
+    }
     if (lockTime !== undefined && nowSeconds >= lockTime) {
-      return presentation("resolution", "Ready for resolution", true, "high");
+      return presentation("resolution", "Apuestas cerradas", false, "normal");
     }
 
-    return presentation("active", "Open", true, "normal");
+    return presentation("active", "Abierto", true, "normal");
   }
 
-  if (market.state === "Locked" || market.state === "Disputed") {
-    return presentation("resolution", market.state, true, "high");
+  if (market.state === "Locked") {
+    const resolutionTime = timestampSeconds(market.resolutionTime);
+    if (resolutionTime === undefined || nowSeconds < resolutionTime) {
+      return presentation("resolution", "Apuestas cerradas", false, "normal");
+    }
+
+    return presentation("resolution", "Listo para resolver", true, "high");
+  }
+
+  if (market.state === "Disputed") {
+    return presentation("resolution", "En disputa", false, "high");
   }
 
   return presentation("history", market.state, false, "none");
@@ -59,14 +72,14 @@ export function challengeAvailability(
   if (challenge.state === "Open") {
     const deadline = timestampSeconds(challenge.deadline);
     if (deadline !== undefined && nowSeconds >= deadline) {
-      return presentation("history", "Expired", false, "none");
+      return presentation("history", "Vencido", false, "none");
     }
 
-    return presentation("active", "Open", true, "normal");
+    return presentation("active", "Abierto", true, "normal");
   }
 
   if (challenge.state === "Accepted" || challenge.state === "EvidenceSubmitted" || challenge.state === "Review") {
-    return presentation("resolution", "Awaiting resolution", true, "high");
+    return presentation("resolution", "Pendiente de resolucion", true, "high");
   }
 
   if (challenge.state === "Disputed") {

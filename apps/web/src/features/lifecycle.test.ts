@@ -50,19 +50,62 @@ describe("lifecycle presentation helpers", () => {
     });
   });
 
-  it("moves an open market past its lock time to resolution", () => {
+  it("closes betting after lock time but waits for resolution time", () => {
     expect(
       marketAvailability(
         market({
           lockTime: "2025-06-15T00:00:00.000Z",
-          resolutionTime: "2025-06-18T00:00:00.000Z",
+          resolutionTime: "2025-06-17T00:00:00.000Z",
         }),
         nowSeconds,
       ),
     ).toEqual({
       group: "resolution",
-      label: "Ready for resolution",
+      label: "Apuestas cerradas",
+      actionable: false,
+      urgency: "normal",
+    });
+  });
+
+  it("marks a market resolvable only after resolution time", () => {
+    expect(
+      marketAvailability(
+        market({
+          lockTime: "2025-06-14T00:00:00.000Z",
+          resolutionTime: "2025-06-15T00:00:00.000Z",
+        }),
+        nowSeconds,
+      ),
+    ).toEqual({
+      group: "resolution",
+      label: "Listo para resolver",
       actionable: true,
+      urgency: "high",
+    });
+  });
+
+  it("keeps a locked market non-actionable until resolution time", () => {
+    expect(
+      marketAvailability(
+        market({
+          state: "Locked",
+          resolutionTime: "2025-06-17T00:00:00.000Z",
+        }),
+        nowSeconds,
+      ),
+    ).toEqual({
+      group: "resolution",
+      label: "Apuestas cerradas",
+      actionable: false,
+      urgency: "normal",
+    });
+  });
+
+  it("does not offer normal resolution for a disputed market", () => {
+    expect(marketAvailability(market({ state: "Disputed" }), nowSeconds)).toEqual({
+      group: "resolution",
+      label: "En disputa",
+      actionable: false,
       urgency: "high",
     });
   });
@@ -84,7 +127,7 @@ describe("lifecycle presentation helpers", () => {
       ),
     ).toEqual({
       group: "history",
-      label: "Expired",
+      label: "Vencido",
       actionable: false,
       urgency: "none",
     });
@@ -93,7 +136,7 @@ describe("lifecycle presentation helpers", () => {
   it("marks an accepted challenge as awaiting resolution", () => {
     expect(challengeAvailability(challenge({ state: "Accepted" }), nowSeconds)).toEqual({
       group: "resolution",
-      label: "Awaiting resolution",
+      label: "Pendiente de resolucion",
       actionable: true,
       urgency: "high",
     });
