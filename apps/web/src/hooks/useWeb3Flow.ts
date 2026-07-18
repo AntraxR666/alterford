@@ -1,21 +1,25 @@
 import {
   BASE_SEPOLIA_CHAIN_ID,
-  DEFAULT_BOND_POLICY,
+  buildXmrConversionAuthorization,
   buildForwardRequestTypedData,
+  challengeBondCategoryId,
   challengeFactoryAbi,
+  creationBondContextResolverAbi,
   erc20Abi,
   formatAddress,
   formatUsdt,
   marketFactoryAbi,
-  toOnchainBondContext,
+  marketBondCategoryId,
   type ContractAddresses,
   type CreationBondEstimate,
   type TxLifecycle,
+  type XmrConversionAuthorization,
 } from "@alterford/sdk";
 import { useMemo, useState } from "react";
-import { encodeFunctionData, keccak256, toBytes, type Address, type Hex } from "viem";
+import { encodeFunctionData, formatEther, keccak256, toBytes, type Address, type Hex } from "viem";
 import {
   useAccount,
+  useBalance,
   useChainId,
   useConnect,
   useDisconnect,
@@ -27,6 +31,7 @@ import {
 } from "wagmi";
 import { configuredAddresses, configuredChainId, hasCoreAddresses } from "../web3/contracts";
 import { targetChain } from "../web3/config";
+import { readableSwitchError, readableTransactionError, type WalletKind } from "../web3/transactionErrors";
 import { AlterfordGatewayClient, waitForRelay } from "../web3/gatewayClient";
 
 interface TxState {
@@ -63,10 +68,43 @@ export interface ChallengeActionInput {
   reason?: string;
 }
 
+export interface ResolveMarketInput {
+  marketId: string;
+  winningOutcome: 0 | 1;
+}
+
+const governedRoleAbi = [
+  {
+    type: "function",
+    name: "RESOLVER_ROLE",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "bytes32" }],
+  },
+  {
+    type: "function",
+    name: "ARBITER_ROLE",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "bytes32" }],
+  },
+  {
+    type: "function",
+    name: "hasRole",
+    stateMutability: "view",
+    inputs: [
+      { name: "role", type: "bytes32" },
+      { name: "account", type: "address" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
+  },
+] as const;
+
 export function useWeb3Flow(
   bondEstimate: CreationBondEstimate,
   quickBetAmount: bigint,
   isUnderworldMode: boolean,
+  marketCategory: string,
   challengeBondEstimate: CreationBondEstimate = bondEstimate,
   challengeRewardPool: bigint = 0n,
 ) {
@@ -85,6 +123,7 @@ export function useWeb3Flow(
   const addresses = useMemo(() => configuredAddresses(), []);
   const contractsReady = hasCoreAddresses(addresses);
   const desiredChainId = configuredChainId();
+  const walletKind: WalletKind = account.connector?.id === "web3auth" ? "embedded" : account.connector ? "external" : "unknown";
   const gateway = useMemo(
     () => import.meta.env.VITE_GATEWAY_URL
       ? new AlterfordGatewayClient(import.meta.env.VITE_GATEWAY_URL)
@@ -95,12 +134,64 @@ export function useWeb3Flow(
     gateway && addresses.alterfordForwarder && addresses.challengeFactory,
   );
   const onTargetChain = chainId === desiredChainId;
-  const requiredApproval = bondEstimate.amount + quickBetAmount;
-  const challengeRequiredApproval = challengeBondEstimate.amount + challengeRewardPool;
-  const createMarketCost = bondEstimate.amount;
+  const marketCategoryId = useMemo(
+    () => marketBondCategoryId(marketCategory, isUnderworldMode),
+    [isUnderworldMode, marketCategory],
+  );
+  const challengeCategoryId = useMemo(() => challengeBondCategoryId(true), []);
+
+  const marketBondPreview = useReadContract({
+    address: addresses.bondContextResolver,
+    abi: creationBondContextResolverAbi,
+    functionName: "previewBond",
+    args:
+      account.address && addresses.creationBondPolicy
+        ? [addresses.creationBondPolicy, account.address, 0, marketCategoryId, 0n]
+        : undefined,
+    chainId: desiredChainId,
+    query: {
+      enabled: Boolean(
+        account.address && addresses.creationBondPolicy && addresses.bondContextResolver,
+      ),
+    },
+  });
+
+  const challengeBondPreview = useReadContract({
+    address: addresses.bondContextResolver,
+    abi: creationBondContextResolverAbi,
+    functionName: "previewBond",
+    args:
+      account.address && addresses.creationBondPolicy
+        ? [
+            addresses.creationBondPolicy,
+            account.address,
+            2,
+            challengeCategoryId,
+            challengeRewardPool,
+          ]
+        : undefined,
+    chainId: desiredChainId,
+    query: {
+      enabled: Boolean(
+        account.address
+          && challengeRewardPool > 0n
+          && addresses.creationBondPolicy
+          && addresses.bondContextResolver,
+      ),
+    },
+  });
+
+  const resolvedBondEstimate = mergeOnchainBondEstimate(bondEstimate, marketBondPreview.data);
+  const resolvedChallengeBondEstimate = mergeOnchainBondEstimate(
+    challengeBondEstimate,
+    challengeBondPreview.data,
+  );
+  const requiredApproval = resolvedBondEstimate.amount + quickBetAmount;
+  const challengeRequiredApproval = resolvedChallengeBondEstimate.amount + challengeRewardPool;
+  const createMarketCost = resolvedBondEstimate.amount;
   const betCost = quickBetAmount;
   const challengeCreateCost = challengeRequiredApproval;
-  const challengeExecutorCost = challengeBondEstimate.amount;
+  const challengeExecutorCost = resolvedChallengeBondEstimate.amount;
 
   const balance = useReadContract({
     address: addresses.settlementToken,
@@ -109,6 +200,12 @@ export function useWeb3Flow(
     args: account.address ? [account.address] : undefined,
     chainId: desiredChainId,
     query: { enabled: Boolean(account.address && addresses.settlementToken) },
+  });
+
+  const nativeBalance = useBalance({
+    address: account.address,
+    chainId: desiredChainId,
+    query: { enabled: Boolean(account.address) },
   });
 
   const allowance = useReadContract({
@@ -135,7 +232,48 @@ export function useWeb3Flow(
     query: { enabled: Boolean(account.address && addresses.settlementToken && addresses.challengeFactory) },
   });
 
+  const resolverRole = useReadContract({
+    address: addresses.marketFactory,
+    abi: governedRoleAbi,
+    functionName: "RESOLVER_ROLE",
+    chainId: desiredChainId,
+    query: { enabled: Boolean(addresses.marketFactory) },
+  });
+
+  const hasResolverRole = useReadContract({
+    address: addresses.marketFactory,
+    abi: governedRoleAbi,
+    functionName: "hasRole",
+    args:
+      account.address && resolverRole.data
+        ? [resolverRole.data, account.address]
+        : undefined,
+    chainId: desiredChainId,
+    query: { enabled: Boolean(addresses.marketFactory && account.address && resolverRole.data) },
+  });
+
+  const arbiterRole = useReadContract({
+    address: addresses.challengeFactory,
+    abi: governedRoleAbi,
+    functionName: "ARBITER_ROLE",
+    chainId: desiredChainId,
+    query: { enabled: Boolean(addresses.challengeFactory) },
+  });
+
+  const hasArbiterRole = useReadContract({
+    address: addresses.challengeFactory,
+    abi: governedRoleAbi,
+    functionName: "hasRole",
+    args:
+      account.address && arbiterRole.data
+        ? [arbiterRole.data, account.address]
+        : undefined,
+    chainId: desiredChainId,
+    query: { enabled: Boolean(addresses.challengeFactory && account.address && arbiterRole.data) },
+  });
+
   const currentBalance = (balance.data as bigint | undefined) ?? 0n;
+  const currentNativeBalance = nativeBalance.data?.value ?? 0n;
   const currentAllowance = (allowance.data as bigint | undefined) ?? 0n;
   const currentChallengeAllowance = (challengeAllowance.data as bigint | undefined) ?? 0n;
   const needsApproval = currentAllowance < requiredApproval;
@@ -182,6 +320,14 @@ export function useWeb3Flow(
       setTx({ status: "confirmed", label: `Red activa: ${targetChain.name}` });
       return true;
     } catch (error) {
+      if (walletKind === "embedded") {
+        setTx({
+          status: "failed",
+          label: `Cambiar a ${targetChain.name}`,
+          error: readableSwitchError(error, { walletKind, targetChainName: targetChain.name }),
+        });
+        return false;
+      }
       try {
         await switchWithInjectedFallback(targetChainId);
         setTx({ status: "confirmed", label: `Red activa: ${targetChain.name}` });
@@ -190,7 +336,7 @@ export function useWeb3Flow(
         setTx({
           status: "failed",
           label: `Cambiar a ${targetChain.name}`,
-          error: readableSwitchError(fallbackError || error),
+          error: readableSwitchError(fallbackError || error, { walletKind, targetChainName: targetChain.name }),
         });
         return false;
       }
@@ -221,9 +367,14 @@ export function useWeb3Flow(
       setTx({ status: "pending", label, hash });
       await publicClient.waitForTransactionReceipt({ hash });
       setTx({ status: "confirmed", label, hash });
-      await Promise.allSettled([balance.refetch(), allowance.refetch(), challengeAllowance.refetch()]);
+      await Promise.allSettled([
+        balance.refetch(),
+        nativeBalance.refetch(),
+        allowance.refetch(),
+        challengeAllowance.refetch(),
+      ]);
     } catch (error) {
-      setTx({ status: "failed", label, error: readableError(error) });
+      setTx({ status: "failed", label, error: readableTransactionError(error, { walletKind, targetChainName: targetChain.name }) });
     }
   }
 
@@ -277,9 +428,14 @@ export function useWeb3Flow(
       const result = await waitForRelay(gateway, submission.taskId);
       if (result.state !== "confirmed") throw new Error("El relay no pudo ejecutar la accion.");
       setTx({ status: "confirmed", label: `${label}: confirmado sin gas`, hash: result.transactionHash });
-      await Promise.allSettled([balance.refetch(), allowance.refetch(), challengeAllowance.refetch()]);
+      await Promise.allSettled([
+        balance.refetch(),
+        nativeBalance.refetch(),
+        allowance.refetch(),
+        challengeAllowance.refetch(),
+      ]);
     } catch (error) {
-      setTx({ status: "failed", label, error: readableError(error) });
+      setTx({ status: "failed", label, error: readableTransactionError(error, { walletKind, targetChainName: targetChain.name }) });
     }
   }
 
@@ -346,14 +502,18 @@ export function useWeb3Flow(
     });
 
   const mintTestTokens = () =>
-    runTx("Agregar fondos de prueba", (contracts) =>
-      writeContractAsync({
-        address: contracts.settlementToken,
-        abi: erc20Abi,
-        functionName: "mint",
-        chainId: desiredChainId,
-        args: [account.address as Address, 100_000_000n],
-      }),
+    guardedTx(
+      "Agregar fondos de prueba",
+      [[currentNativeBalance > 0n, "Necesitas una pequena cantidad de ETH en Base Sepolia para pagar el gas del faucet."]],
+      () => runTx("Agregar fondos de prueba", (contracts) =>
+        writeContractAsync({
+          address: contracts.settlementToken,
+          abi: erc20Abi,
+          functionName: "mint",
+          chainId: desiredChainId,
+          args: [account.address as Address, 100_000_000n],
+        }),
+      ),
     );
 
   const createMarket = (input?: CreateMarketInput) =>
@@ -378,17 +538,7 @@ export function useWeb3Flow(
           BigInt(Math.floor(Date.now() / 1000) + Math.max(5, input?.closesInMinutes ?? 60) * 60),
           BigInt(Math.floor(Date.now() / 1000) + Math.max(10, input?.resolvesInMinutes ?? 120) * 60),
           0,
-          toOnchainBondContext({
-            entityType: "Market",
-            mode: isUnderworldMode ? "Underworld" : "Vanilla",
-            creatorTier: "Basic",
-            categoryRisk: isUnderworldMode ? "High" : "Low",
-            reputation: "New",
-            expectedVolumeUsdt: isUnderworldMode ? 500_000_000n : 20_000_000n,
-            disputeCount: isUnderworldMode ? 1 : 0,
-            fraudCount: 0,
-            policy: DEFAULT_BOND_POLICY,
-          }),
+          marketBondCategoryId(input?.category || marketCategory, isUnderworldMode),
         ],
       });
       }),
@@ -418,17 +568,7 @@ export function useWeb3Flow(
           Math.floor(Date.now() / 1000)
             + Math.min(maxDeadlineMinutes, Math.max(30, input.deadlineMinutes)) * 60,
         ),
-        toOnchainBondContext({
-          entityType: "Challenge",
-          mode: "Underworld",
-          creatorTier: "Basic",
-          categoryRisk: input.riskLevel,
-          reputation: "New",
-          expectedVolumeUsdt: input.stakeUsdt,
-          disputeCount: input.riskLevel === "Critical" ? 2 : 1,
-          fraudCount: 0,
-          policy: DEFAULT_BOND_POLICY,
-        }),
+        challengeCategoryId,
       ] as const;
       return runChallengeTx("Crear reto Underworld", encodeFunctionData({
         abi: challengeFactoryAbi,
@@ -661,14 +801,14 @@ export function useWeb3Flow(
       ),
     );
 
-  const resolveMarket = () =>
+  const resolveMarket = (input: ResolveMarketInput) =>
     runTx("Resolver mercado", (contracts) =>
       writeContractAsync({
         address: contracts.marketFactory,
         abi: marketFactoryAbi,
         functionName: "resolveMarket",
         chainId: desiredChainId,
-        args: [BigInt(marketId || "1"), selectedOutcome],
+        args: [BigInt(input.marketId), input.winningOutcome],
       }),
     );
 
@@ -694,6 +834,16 @@ export function useWeb3Flow(
       }),
     );
 
+  async function signXmrConversionAuthorization(input: XmrConversionAuthorization) {
+    if (!account.address || account.address.toLowerCase() !== input.destination.toLowerCase()) {
+      throw new Error("La wallet conectada no coincide con la direccion que recibira el USDC.");
+    }
+    if (!onTargetChain) {
+      throw new Error(`Cambia a ${targetChain.name} antes de autorizar la conversion.`);
+    }
+    return signTypedDataAsync(buildXmrConversionAuthorization(desiredChainId, input));
+  }
+
   return {
     account,
     chainId,
@@ -706,6 +856,10 @@ export function useWeb3Flow(
     onTargetChain,
     contractsReady,
     gaslessChallengesAvailable,
+    isMarketResolver: hasResolverRole.data === true,
+    isChallengeArbiter: hasArbiterRole.data === true,
+    bondEstimate: resolvedBondEstimate,
+    challengeBondEstimate: resolvedChallengeBondEstimate,
     addresses,
     balance: currentBalance,
     allowance: currentAllowance,
@@ -753,13 +907,28 @@ export function useWeb3Flow(
     resolveMarket,
     claimReward,
     claimRefund,
+    signXmrConversionAuthorization,
     accountLabel: formatAddress(account.address),
+    gasBalanceLabel: `${formatEther(currentNativeBalance)} ETH`,
     balanceLabel: `${formatUsdt(currentBalance)} aUSDT`,
     allowanceLabel: `${formatUsdt(currentAllowance)} aUSDT`,
     challengeAllowanceLabel: `${formatUsdt(currentChallengeAllowance)} aUSDT`,
     challengeTotalCostLabel: `${formatUsdt(challengeRequiredApproval)} aUSDT`,
-    createCostLabel: `${formatUsdt(bondEstimate.amount)} aUSDT bond`,
+    createCostLabel: `${formatUsdt(resolvedBondEstimate.amount)} aUSDT bond`,
     betCostLabel: `${formatUsdt(quickBetAmount)} aUSDT`,
+  };
+}
+
+function mergeOnchainBondEstimate(
+  fallback: CreationBondEstimate,
+  preview: readonly [bigint, number] | undefined,
+): CreationBondEstimate {
+  if (!preview) return fallback;
+  return {
+    ...fallback,
+    amount: preview[0],
+    reasonFlags: Number(preview[1]),
+    reasons: ["Monto exacto on-chain según categoría y perfil verificados."],
   };
 }
 
@@ -772,24 +941,6 @@ function buildChallengeMetadataURI(input: CreateChallengeInput): string {
     description: "Reto creado por usuario en Alterford.",
   });
   return `alterford://challenge?${params.toString()}`;
-}
-
-function readableError(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  const firstLine = message.split("\n")[0] || message;
-  if (/user rejected|user denied|rejected/i.test(message)) {
-    return "Operacion cancelada en la wallet.";
-  }
-  if (/insufficient funds/i.test(message)) {
-    return "No tienes ETH suficiente en Base Sepolia para pagar gas.";
-  }
-  if (/allowance/i.test(message)) {
-    return "Falta autorizar aUSDT antes de continuar.";
-  }
-  if (/switch chain|chain|network/i.test(message)) {
-    return `La wallet no pudo cambiar a ${targetChain.name}. Abre MetaMask, selecciona Base Sepolia y vuelve a intentar.`;
-  }
-  return firstLine || "La transaccion fallo.";
 }
 
 async function switchWithInjectedFallback(chainId: number) {
@@ -823,14 +974,6 @@ async function switchWithInjectedFallback(chainId: number) {
       params: [{ chainId: chainIdHex }],
     });
   }
-}
-
-function readableSwitchError(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  if (/user rejected|user denied|rejected/i.test(message)) {
-    return "Cancelaste el cambio de red en la wallet. Selecciona Base Sepolia para poder continuar.";
-  }
-  return `No pude cambiar automaticamente a ${targetChain.name}. Abre MetaMask, agrega Base Sepolia si hace falta y vuelve a intentar.`;
 }
 
 function getErrorCode(error: unknown): number | undefined {

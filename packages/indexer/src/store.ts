@@ -148,6 +148,9 @@ function deserializeProjection(raw: any): ProjectionState {
       {
         ...value,
         totalPool: BigInt(value.totalPool ?? 0),
+        lockTime: value.lockTime === undefined ? undefined : BigInt(value.lockTime),
+        resolutionTime:
+          value.resolutionTime === undefined ? undefined : BigInt(value.resolutionTime),
         poolByOutcome: new Map(
           [...(value.poolByOutcome ?? [])].map(([outcome, amount]: [number, string]) => [
             Number(outcome),
@@ -260,6 +263,7 @@ function deserializeJournal(raw: any[]): AlterfordEvent[] {
 
 function revivePayloadBigints(type: string, payload: Record<string, unknown>) {
   const bigintFieldsByType: Record<string, string[]> = {
+    MarketCreated: ["lockTime", "resolutionTime"],
     BetPlaced: ["amount"],
     FeesAccrued: ["adminFee", "creatorFee"],
     RewardClaimed: ["amount"],

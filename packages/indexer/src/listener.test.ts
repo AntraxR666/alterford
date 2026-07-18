@@ -1,5 +1,6 @@
 import {
   bountyFactoryAbi,
+  bondCategoryId,
   bountyRecoveryVaultAbi,
   challengeFactoryAbi,
   marketFactoryAbi,
@@ -47,6 +48,96 @@ describe("real Alterford log decoder", () => {
     expect(typeof (listener as any).decodeAlterfordLog).toBe("function");
   });
 
+  it("reads market lifecycle timestamps from the getter when MarketCreated is decoded", async () => {
+    const client = {
+      readContract: vi.fn().mockResolvedValue([
+        creator,
+        token,
+        hash(11),
+        "alterford://market?question=Will+ETH+rise%3F",
+        11_000n,
+        12_000n,
+        1,
+        0,
+        0,
+        bondCategoryId("VANILLA_MARKET"),
+        0,
+        1,
+      ]),
+    };
+    const log = encodedLog(
+      marketFactoryAbi,
+      "MarketCreated",
+      {
+        marketId: 5n,
+        creator,
+        settlementToken: token,
+        metadataHash: hash(11),
+        metadataURI: "alterford://market?question=Will+ETH+rise%3F",
+        categoryId: bondCategoryId("VANILLA_MARKET"),
+        mode: 0,
+        riskLevel: 1,
+      },
+      marketFactory,
+    );
+
+    const decoded = await (listener as any).decodeAlterfordLog(
+      31337,
+      log,
+      client,
+      challengeFactory,
+      bountyFactory,
+    );
+
+    expect(decoded).toMatchObject({
+      type: "MarketCreated",
+      payload: {
+        marketId: "5",
+        settlementToken: token,
+        lockTime: 11_000n,
+        resolutionTime: 12_000n,
+        state: "Open",
+      },
+    });
+    expect(client.readContract).toHaveBeenCalledWith(
+      expect.objectContaining({ address: marketFactory, functionName: "markets", args: [5n] }),
+    );
+  });
+
+  it("hydrates legacy market projections that predate lifecycle indexing", async () => {
+    const state = (await import("./projections.js")).createInitialProjectionState();
+    state.markets.set("5", {
+      marketId: "5",
+      creator,
+      title: "Legacy market",
+      category: "Crypto",
+      modeAffinity: "Vanilla",
+      state: "Open",
+      totalPool: 0n,
+      poolByOutcome: new Map(),
+    });
+    const client = {
+      readContract: vi.fn().mockResolvedValue([
+        creator,
+        token,
+        hash(11),
+        "alterford://market?question=Legacy",
+        11_000n,
+        12_000n,
+        5,
+      ]),
+    };
+
+    const hydrated = await listener.hydrateMarketLifecycle(state, client as any, marketFactory);
+
+    expect(hydrated).toBe(1);
+    expect(state.markets.get("5")).toMatchObject({
+      lockTime: 11_000n,
+      resolutionTime: 12_000n,
+      state: "Cancelled",
+    });
+  });
+
   it("reads bounty details from the getter when BountyCreated is decoded", async () => {
     const client = {
       readContract: vi.fn().mockResolvedValue([
@@ -57,12 +148,23 @@ describe("real Alterford log decoder", () => {
         hash(1),
         "alterford://bounty?title=Audit",
         0,
+        bondCategoryId("VANILLA_BOUNTY"),
+        0,
+        1,
       ]),
     };
     const log = encodedLog(
       bountyFactoryAbi,
       "BountyCreated",
-      { bountyId: 4n, creator, rewardPool: 5_000_000n, rulesHash: hash(1) },
+      {
+        bountyId: 4n,
+        creator,
+        rewardPool: 5_000_000n,
+        rulesHash: hash(1),
+        categoryId: bondCategoryId("VANILLA_BOUNTY"),
+        mode: 0,
+        riskLevel: 1,
+      },
       bountyFactory,
     );
 
@@ -106,13 +208,23 @@ describe("real Alterford log decoder", () => {
         0,
         hash(3),
         "ipfs://evidence",
+        bondCategoryId("UNDERWORLD_CHALLENGE"),
+        1,
         2,
       ]),
     };
     const log = encodedLog(
       challengeFactoryAbi,
       "ChallengeCreated",
-      { challengeId: 9n, creator, rewardPool: 8_000_000n, rulesHash: hash(2) },
+      {
+        challengeId: 9n,
+        creator,
+        rewardPool: 8_000_000n,
+        rulesHash: hash(2),
+        categoryId: bondCategoryId("UNDERWORLD_CHALLENGE"),
+        mode: 1,
+        riskLevel: 2,
+      },
       challengeFactory,
     );
 

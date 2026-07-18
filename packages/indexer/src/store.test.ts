@@ -40,6 +40,9 @@ describe("persistent indexer store", () => {
         title: "Local test market",
         category: "UserMarkets",
         modeAffinity: "Both",
+        lockTime: 1_000n,
+        resolutionTime: 2_000n,
+        state: "Open",
       },
     });
     projectEvent(state.projection, {
@@ -70,6 +73,8 @@ describe("persistent indexer store", () => {
     expect(reloaded.cursor.lastProcessedBlock).toBe(2n);
     expect(reloaded.projection.markets.get("1")?.totalPool).toBe(1_000_000n);
     expect(reloaded.projection.markets.get("1")?.poolByOutcome.get(0)).toBe(1_000_000n);
+    expect(reloaded.projection.markets.get("1")?.lockTime).toBe(1_000n);
+    expect(reloaded.projection.markets.get("1")?.resolutionTime).toBe(2_000n);
   });
 
   it("creates restorable snapshots and replays persisted journals", async () => {

@@ -1167,6 +1167,112 @@ button {
   padding: 10px;
 }
 
+.card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.card-title-row h2 {
+  margin: 0;
+}
+
+.xmr-conversion-card {
+  grid-column: span 2;
+  align-content: start;
+}
+
+.xmr-conversion-card code {
+  display: block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.xmr-quote-review,
+.xmr-assistance,
+.xmr-payment {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid rgba(15, 23, 42, 0.14);
+  padding-top: 12px;
+}
+
+.xmr-quote-review dl {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+
+.xmr-quote-review dl div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.xmr-quote-review dt {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.xmr-quote-review dd {
+  margin: 0;
+  text-align: right;
+  font-weight: 750;
+}
+
+.info-card .secondary-action {
+  border: 1px solid rgba(15, 23, 42, 0.2);
+  background: transparent;
+  color: inherit;
+}
+
+.button-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 42px;
+  border-radius: 8px;
+  background: #0f172a;
+  padding: 9px 12px;
+  color: #ffffff;
+  text-decoration: none;
+  font-weight: 750;
+}
+
+.underworld .xmr-quote-review,
+.underworld .xmr-assistance,
+.underworld .xmr-payment {
+  border-top-color: rgba(34, 211, 238, 0.24);
+}
+
+.underworld .xmr-quote-review dt {
+  color: #93c5d6;
+}
+
+.underworld .button-link {
+  background: #22d3ee;
+  color: #041014;
+}
+
+@media (max-width: 760px) {
+  .xmr-conversion-card {
+    grid-column: auto;
+  }
+
+  .xmr-quote-review dl div {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .xmr-quote-review dd {
+    text-align: left;
+  }
+}
+
 .qr-icon {
   display: inline-grid;
   place-items: center;
@@ -1470,6 +1576,276 @@ button {
   }
   to {
     transform: translate3d(6%, 2%, 0) rotate(1deg);
+  }
+}
+
+/* Lifecycle-aware product surfaces */
+.lifecycle-section {
+  margin-top: 22px;
+}
+
+.lifecycle-section > .section-title {
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.28);
+}
+
+.lifecycle-section > .section-title h3,
+.template-heading h3 {
+  margin: 0;
+  font-size: 16px;
+  letter-spacing: 0;
+}
+
+.empty-inline {
+  margin: 0;
+  border-left: 3px solid #94a3b8;
+  padding: 10px 12px;
+  color: #64748b;
+}
+
+.challenge-card.selected {
+  border-color: #0891b2;
+  box-shadow: 0 0 0 2px rgba(8, 145, 178, 0.14);
+}
+
+.entity-select {
+  min-height: 40px;
+  border: 1px solid rgba(8, 145, 178, 0.35);
+  border-radius: 6px;
+  background: #ecfeff;
+  color: #155e75;
+  font-weight: 850;
+}
+
+.lifecycle-badge {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.lifecycle-badge.active {
+  border-color: rgba(22, 163, 74, 0.28);
+  background: #ecfdf5;
+  color: #166534;
+}
+
+.lifecycle-badge.resolution {
+  border-color: rgba(217, 119, 6, 0.3);
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.lifecycle-badge.history {
+  border-color: rgba(100, 116, 139, 0.25);
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.history-panel {
+  margin-top: 18px;
+  border: 1px solid rgba(100, 116, 139, 0.25);
+  border-radius: 8px;
+  background: rgba(248, 250, 252, 0.78);
+  padding: 12px;
+}
+
+.history-panel > summary {
+  cursor: pointer;
+  font-weight: 850;
+}
+
+.template-heading {
+  margin-top: 24px;
+}
+
+.template-cards {
+  opacity: 0.76;
+}
+
+.selected-entity-summary,
+.operator-warning {
+  display: grid;
+  gap: 5px;
+  border-left: 3px solid #0891b2;
+  background: rgba(8, 145, 178, 0.08);
+  padding: 11px 12px;
+}
+
+.operator-warning {
+  border-left-color: #e11d48;
+  background: rgba(225, 29, 72, 0.1);
+}
+
+.operator-warning button {
+  margin-top: 6px;
+}
+
+.guided-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.operator-market-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.operator-market {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(250px, 0.8fr);
+  gap: 12px;
+  border-top: 1px solid #dbe4ee;
+  padding-top: 12px;
+}
+
+.operator-market > div:first-child {
+  display: grid;
+  gap: 5px;
+}
+
+.operator-outcome {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+.operator-outcome .resolve-button {
+  grid-column: 1 / -1;
+}
+
+.operator-outcome .yes.selected {
+  border-color: #16a34a;
+  background: #16a34a;
+  color: white;
+}
+
+.operator-outcome .no.selected {
+  border-color: #e11d48;
+  background: #e11d48;
+  color: white;
+}
+
+.compact-history {
+  display: grid;
+  gap: 8px;
+}
+
+/* The Underworld mode uses the same components with a materially different atmosphere. */
+.app-shell.underworld {
+  background-color: #04060b;
+  background-image:
+    linear-gradient(rgba(34, 211, 238, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(244, 63, 94, 0.04) 1px, transparent 1px),
+    linear-gradient(180deg, #090711 0, #04060b 58%, #071014 100%);
+  background-size: 38px 38px, 38px 38px, auto;
+}
+
+.underworld .app-header {
+  border-bottom-color: rgba(244, 63, 94, 0.5);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+}
+
+.underworld .app-header h1 {
+  color: #f8fafc;
+  text-shadow: 0 0 18px rgba(34, 211, 238, 0.25);
+}
+
+.underworld .underworld-gateway {
+  min-height: 150px;
+  border-color: rgba(244, 63, 94, 0.7);
+  background:
+    linear-gradient(90deg, rgba(2, 6, 23, 0.94), rgba(76, 5, 25, 0.82) 48%, rgba(2, 44, 54, 0.88)),
+    repeating-linear-gradient(-45deg, rgba(244, 63, 94, 0.07) 0 10px, transparent 10px 20px);
+  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.08), 0 18px 42px rgba(0, 0, 0, 0.38);
+}
+
+.underworld .underworld-gateway h2 {
+  max-width: 760px;
+  font-size: clamp(22px, 3vw, 34px);
+  color: #fff1f2;
+}
+
+.underworld .gateway-pulse {
+  border-color: #fb7185;
+  color: #fecdd3;
+  background: rgba(69, 10, 10, 0.72);
+}
+
+.underworld .challenge-feed,
+.underworld .challenge-builder {
+  border-color: rgba(244, 63, 94, 0.34);
+  background: rgba(5, 8, 16, 0.92);
+}
+
+.underworld .lifecycle-section > .section-title {
+  border-bottom-color: rgba(34, 211, 238, 0.2);
+}
+
+.underworld .challenge-card {
+  position: relative;
+  border-color: rgba(34, 211, 238, 0.2);
+  background: linear-gradient(160deg, rgba(12, 18, 33, 0.98), rgba(30, 7, 20, 0.82));
+}
+
+.underworld .challenge-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: linear-gradient(90deg, #f43f5e, transparent 45%, #22d3ee);
+}
+
+.underworld .challenge-card.selected {
+  border-color: #22d3ee;
+  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.45), 0 0 24px rgba(244, 63, 94, 0.12);
+}
+
+.underworld .entity-select {
+  border-color: rgba(34, 211, 238, 0.45);
+  background: rgba(8, 47, 73, 0.62);
+  color: #a5f3fc;
+}
+
+.underworld .lifecycle-badge.active {
+  border-color: rgba(74, 222, 128, 0.35);
+  background: rgba(20, 83, 45, 0.5);
+  color: #86efac;
+}
+
+.underworld .lifecycle-badge.resolution {
+  border-color: rgba(251, 191, 36, 0.38);
+  background: rgba(120, 53, 15, 0.48);
+  color: #fde68a;
+}
+
+.underworld .lifecycle-badge.history,
+.underworld .history-panel {
+  border-color: rgba(100, 116, 139, 0.28);
+  background: rgba(15, 23, 42, 0.68);
+  color: #94a3b8;
+}
+
+.underworld .selected-entity-summary {
+  border-left-color: #22d3ee;
+  background: rgba(8, 47, 73, 0.42);
+}
+
+@media (max-width: 760px) {
+  .operator-market {
+    grid-template-columns: 1fr;
+  }
+
+  .guided-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .underworld-gateway::after,
+  .gateway-pulse {
+    animation: none;
   }
 }
 

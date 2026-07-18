@@ -18,6 +18,9 @@ const marketCreated: AlterfordEvent = {
     settlementToken: "0x0000000000000000000000000000000000000010",
     metadataHash: "0xmetadata",
     metadataURI: "ipfs://metadata",
+    lockTime: 1_000n,
+    resolutionTime: 2_000n,
+    state: "Open",
   },
 };
 
@@ -30,6 +33,24 @@ describe("Alterford indexer projections", () => {
 
     expect(state.processedEventIds.size).toBe(1);
     expect(state.markets.get("1")?.title).toBe("Will ETH close above $4,000 this week?");
+    expect(state.markets.get("1")?.lockTime).toBe(1_000n);
+    expect(state.markets.get("1")?.resolutionTime).toBe(2_000n);
+  });
+
+  it("tracks terminal market lifecycle events", () => {
+    const state = createInitialProjectionState();
+    projectEvent(state, marketCreated);
+    projectEvent(state, {
+      id: "8453:101:1",
+      chainId: 8453,
+      blockNumber: 101n,
+      txHash: "0xcancel",
+      logIndex: 1,
+      type: "MarketCancelled",
+      payload: { marketId: "1", reasonHash: "0xexpired" },
+    });
+
+    expect(state.markets.get("1")?.state).toBe("Cancelled");
   });
 
   it("projects v1.1 growth, reputation, oracle, and moderation events", () => {

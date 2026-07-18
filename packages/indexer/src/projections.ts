@@ -3,6 +3,7 @@ import type {
   BountyState,
   Category,
   ChallengeState,
+  MarketState,
   ModeAffinity,
   RiskLevel,
 } from "@alterford/sdk";
@@ -19,7 +20,9 @@ export interface MarketProjection {
   settlementToken?: Address;
   metadataHash?: string;
   metadataURI?: string;
-  state?: "Open" | "Resolved";
+  state?: MarketState;
+  lockTime?: bigint;
+  resolutionTime?: bigint;
   winningOutcome?: number;
   totalPool: bigint;
   poolByOutcome: Map<number, bigint>;
@@ -36,6 +39,8 @@ export interface ChallengeProjection {
   deadline?: bigint;
   state: ChallengeState;
   riskLevel?: RiskLevel;
+  categoryId?: string;
+  modeAffinity?: ModeAffinity;
   metadataURI?: string;
   rulesHash?: string;
   liveStreamURI?: string;
@@ -95,6 +100,9 @@ export interface BountyProjection {
   rewardEscrow: bigint;
   deadline?: bigint;
   state: BountyState;
+  categoryId?: string;
+  modeAffinity?: ModeAffinity;
+  riskLevel?: RiskLevel;
   metadataURI?: string;
   rulesHash: string;
   submissions: BountySubmissionProjection[];
@@ -238,7 +246,7 @@ export function projectEvent(state: ProjectionState, event: AlterfordEvent): Pro
     case "MarketCreated":
       state.markets.set(event.payload.marketId, {
         ...event.payload,
-        state: "Open",
+        state: event.payload.state ?? "Open",
         totalPool: 0n,
         poolByOutcome: new Map(),
       });
@@ -261,6 +269,21 @@ export function projectEvent(state: ProjectionState, event: AlterfordEvent): Pro
         market.state = "Resolved";
         market.winningOutcome = event.payload.winningOutcome;
       }
+      break;
+    }
+    case "MarketLocked": {
+      const market = state.markets.get(event.payload.marketId);
+      if (market) market.state = "Locked";
+      break;
+    }
+    case "MarketCancelled": {
+      const market = state.markets.get(event.payload.marketId);
+      if (market) market.state = "Cancelled";
+      break;
+    }
+    case "MarketFraudConfirmed": {
+      const market = state.markets.get(event.payload.marketId);
+      if (market) market.state = "Fraud";
       break;
     }
     case "FeesAccrued":

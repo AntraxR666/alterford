@@ -1,10 +1,12 @@
 import {
   bountyFactoryAbi,
+  bondCategoryId,
   bountyRecoveryVaultAbi,
   challengeFactoryAbi,
   marketFactoryAbi,
   type BountyState,
   type ChallengeState,
+  type MarketState,
   type RiskLevel,
 } from "@alterford/sdk";
 import {
@@ -20,7 +22,7 @@ import {
 } from "viem";
 import type { AlterfordEvent, BondEntityType } from "./events.js";
 import { eventIdentity } from "./events.js";
-import { createInitialProjectionState, projectEvent } from "./projections.js";
+import { createInitialProjectionState, projectEvent, type ProjectionState } from "./projections.js";
 import {
   createBlockCheckpoint,
   replayEventJournal,
@@ -48,6 +50,29 @@ const factoryEventAbi = uniqueEventAbi([
   ...bountyRecoveryVaultAbi,
 ]);
 
+const marketDetailsAbi = [
+  {
+    type: "function",
+    name: "markets",
+    stateMutability: "view",
+    inputs: [{ name: "marketId", type: "uint256" }],
+    outputs: [
+      { name: "creator", type: "address" },
+      { name: "settlementToken", type: "address" },
+      { name: "metadataHash", type: "bytes32" },
+      { name: "metadataURI", type: "string" },
+      { name: "lockTime", type: "uint256" },
+      { name: "resolutionTime", type: "uint256" },
+      { name: "state", type: "uint8" },
+      { name: "noWinnersPolicy", type: "uint8" },
+      { name: "winningOutcome", type: "uint8" },
+      { name: "categoryId", type: "bytes32" },
+      { name: "mode", type: "uint8" },
+      { name: "riskLevel", type: "uint8" },
+    ],
+  },
+] as const;
+
 export async function pollMarketFactoryEvents(
   indexerState: PersistedIndexerState,
   options: MarketFactoryListenerOptions,
@@ -60,10 +85,18 @@ export async function pollMarketFactoryEvents(
     rpcUrls: { default: { http: [options.rpcUrl] } },
   } satisfies Chain;
   const client = createPublicClient({ chain, transport: http(options.rpcUrl) });
+  const hydratedMarkets = await hydrateMarketLifecycle(
+    indexerState.projection,
+    client,
+    options.marketFactory,
+  );
   const latest = await client.getBlockNumber();
   const toBlock = latest > confirmations ? latest - confirmations : 0n;
 
-  if (toBlock <= indexerState.cursor.lastProcessedBlock) return indexerState;
+  if (toBlock <= indexerState.cursor.lastProcessedBlock) {
+    if (hydratedMarkets > 0) await saveIndexerState(options.storePath, indexerState);
+    return indexerState;
+  }
 
   const logs = [];
   const maxLogBlockRange = BigInt(process.env.MAX_LOG_BLOCK_RANGE || "2000");
@@ -131,6 +164,24 @@ export async function pollMarketFactoryEvents(
   return indexerState;
 }
 
+export async function hydrateMarketLifecycle(
+  projection: ProjectionState,
+  client: Pick<PublicClient, "readContract">,
+  marketFactory: Address,
+): Promise<number> {
+  let hydrated = 0;
+  for (const market of projection.markets.values()) {
+    if (market.lockTime !== undefined && market.resolutionTime !== undefined) continue;
+    const details = await readMarketDetails(client, marketFactory, BigInt(market.marketId));
+    if (!details) continue;
+    market.lockTime = details.lockTime;
+    market.resolutionTime = details.resolutionTime;
+    market.state = details.state;
+    hydrated += 1;
+  }
+  return hydrated;
+}
+
 export async function decodeAlterfordLog(
   chainId: number,
   log: {
@@ -145,7 +196,7 @@ export async function decodeAlterfordLog(
   challengeFactory?: Address,
   bountyFactory?: Address,
 ): Promise<AlterfordEvent | null> {
-  if (log.blockNumber === null || log.transactionHash === null) return null;
+  if (!log.address || log.blockNumber === null || log.transactionHash === null) return null;
 
   try {
     const decoded = decodeEventLog({
@@ -165,20 +216,29 @@ export async function decodeAlterfordLog(
 
     switch (decoded.eventName) {
       case "MarketCreated":
+        {
+        const marketId = args.marketId as bigint;
+        const details = await readMarketDetails(client, log.address, marketId);
         return {
           ...base,
           type: "MarketCreated",
           payload: {
-            marketId: String(args.marketId),
+            marketId: String(marketId),
             creator: args.creator as Address,
             settlementToken: args.settlementToken as Address,
             metadataHash: args.metadataHash as string,
             metadataURI: args.metadataURI as string,
             title: `Market ${String(args.marketId)}`,
-            category: "UserMarkets",
-            modeAffinity: "Both",
+            category: decodeCategory(args.categoryId as string),
+            modeAffinity: decodeMode(Number(args.mode)),
+            categoryId: args.categoryId as string,
+            riskLevel: decodeRiskLevel(Number(args.riskLevel)),
+            lockTime: details?.lockTime,
+            resolutionTime: details?.resolutionTime,
+            state: details?.state ?? "Open",
           },
         };
+        }
       case "BetPlaced":
         return {
           ...base,
@@ -221,6 +281,20 @@ export async function decodeAlterfordLog(
             marketId: String(args.marketId),
             winningOutcome: Number(args.winningOutcome),
           },
+        };
+      case "MarketLocked":
+        return { ...base, type: "MarketLocked", payload: { marketId: String(args.marketId) } };
+      case "MarketCancelled":
+        return {
+          ...base,
+          type: "MarketCancelled",
+          payload: { marketId: String(args.marketId), reasonHash: args.reasonHash as string },
+        };
+      case "MarketFraudConfirmed":
+        return {
+          ...base,
+          type: "MarketFraudConfirmed",
+          payload: { marketId: String(args.marketId), reasonHash: args.reasonHash as string },
         };
       case "FeesAccrued":
         return {
@@ -273,6 +347,9 @@ export async function decodeAlterfordLog(
             deadline: details?.deadline,
             metadataURI: details?.metadataURI,
             state: details?.state,
+            categoryId: (args.categoryId as string) || details?.categoryId,
+            modeAffinity: decodeMode(Number(args.mode ?? details?.mode ?? 0)),
+            riskLevel: decodeRiskLevel(Number(args.riskLevel ?? details?.riskLevel ?? 0)),
           },
         };
       }
@@ -352,7 +429,9 @@ export async function decodeAlterfordLog(
             metadataURI: details?.metadataURI,
             deadline: details?.deadline,
             state: details?.state,
-            riskLevel: details?.riskLevel,
+            categoryId: (args.categoryId as string) || details?.categoryId,
+            modeAffinity: decodeMode(Number(args.mode ?? details?.mode ?? 0)),
+            riskLevel: decodeRiskLevel(Number(args.riskLevel ?? details?.riskLevel ?? 0)),
           },
         };
       }
@@ -548,7 +627,32 @@ async function readChallengeDetails(
       metadataURI: values[4] as string,
       deadline: values[7] as bigint,
       state: decodeChallengeState(Number(values[8] ?? 0)),
-      riskLevel: decodeRiskLevel(Number(values[11] ?? 0)),
+      categoryId: values[11] as string,
+      mode: Number(values[12] ?? 0),
+      riskLevel: Number(values[13] ?? 0),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function readMarketDetails(
+  client: Pick<PublicClient, "readContract">,
+  marketFactory: Address,
+  marketId: bigint,
+) {
+  try {
+    const result = await client.readContract({
+      address: marketFactory,
+      abi: marketDetailsAbi,
+      functionName: "markets",
+      args: [marketId],
+    });
+    const values = result as unknown as readonly unknown[];
+    return {
+      lockTime: values[4] as bigint,
+      resolutionTime: values[5] as bigint,
+      state: decodeMarketState(Number(values[6] ?? 0)),
     };
   } catch {
     return null;
@@ -574,6 +678,9 @@ async function readBountyDetails(
       metadataURI: values[5] as string,
       state: decodeBountyState(Number(values[6] ?? 0)),
       rewardEscrow: values[2] as bigint,
+      categoryId: values[7] as string,
+      mode: Number(values[8] ?? 0),
+      riskLevel: Number(values[9] ?? 0),
     };
   } catch {
     return null;
@@ -596,6 +703,22 @@ function decodeChallengeState(value: number): ChallengeState {
   )[value] ?? "Open";
 }
 
+function decodeMarketState(value: number): MarketState {
+  return (
+    [
+      "Draft",
+      "Open",
+      "Locked",
+      "Resolved",
+      "Disputed",
+      "Cancelled",
+      "Fraud",
+      "Expired",
+      "Settled",
+    ] as const
+  )[value] ?? "Draft";
+}
+
 function decodeBountyState(value: number): BountyState {
   return (
     [
@@ -614,6 +737,28 @@ function decodeBountyState(value: number): BountyState {
 
 function decodeRiskLevel(value: number): RiskLevel {
   return (["Low", "Medium", "High", "Critical"] as const)[value] ?? "Low";
+}
+
+function decodeMode(value: number): "Vanilla" | "Underworld" {
+  return value === 1 ? "Underworld" : "Vanilla";
+}
+
+function decodeCategory(categoryId: string | undefined) {
+  const normalized = categoryId?.toLowerCase();
+  const categories = [
+    ["SPORTS", "Sports"],
+    ["WEATHER", "Weather"],
+    ["TECHNOLOGY", "Technology"],
+    ["CRYPTO", "Crypto"],
+    ["CULTURE_POP", "PopCulture"],
+    ["NEWS", "News"],
+    ["STRANGE_EVENTS", "StrangeEvents"],
+    ["VIRAL", "Viral"],
+  ] as const;
+  for (const [key, category] of categories) {
+    if (bondCategoryId(key).toLowerCase() === normalized) return category;
+  }
+  return "UserMarkets";
 }
 
 function decodeEntityType(value: Hex): BondEntityType {

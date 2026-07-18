@@ -21,9 +21,9 @@ import {
   WalletCards,
   Zap,
 } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { isAddress, type Address } from "viem";
+import { isAddress, type Address, type Hex } from "viem";
 import {
   DEFAULT_BOND_POLICY,
   DEFAULT_ECONOMICS,
@@ -34,8 +34,11 @@ import {
   formatUsdt,
   type ChallengeDTO,
   type MarketDTO,
+  type XmrConversionAuthorization,
 } from "@alterford/sdk";
 import { sampleMarkets } from "./features/markets/sampleMarkets";
+import { challengeAvailability, marketAvailability, partitionChallenges } from "./features/lifecycle";
+import { XmrConversionCard } from "./features/xmr/XmrConversionCard";
 import { useIndexerFeed } from "./hooks/useIndexerFeed";
 import { useWeb3Flow } from "./hooks/useWeb3Flow";
 import { useAppStore } from "./stores/appStore";
@@ -51,6 +54,10 @@ type MarketViewModel = {
   yesOdds: number;
   noOdds: number;
   poolByOutcome: readonly bigint[];
+  lockTime: string;
+  resolutionTime: string;
+  lifecycleLabel: string;
+  canResolve: boolean;
 };
 
 type MarketQuoteView = ReturnType<typeof calculateMarketSettlement> & {
@@ -98,7 +105,7 @@ const underworldProofSteps = [
   "Creador bloquea recompensa + bond.",
   "Ejecutor acepta con otra wallet y bloquea bond.",
   "Live/evidencia se publica antes del deadline.",
-  "Arbitro resuelve: paga, reembolsa o slashea bond.",
+  "Las partes acuerdan; el arbitro decide solo si hay disputa.",
 ];
 
 export function App() {
@@ -112,7 +119,7 @@ export function App() {
   const [challengeStake, setChallengeStake] = useState("100");
   const [challengeEvidence, setChallengeEvidence] = useState("Video continuo, timestamp y verificacion del resultado final");
   const [challengeLiveUrl, setChallengeLiveUrl] = useState("");
-  const [challengeActionId, setChallengeActionId] = useState("1");
+  const [challengeActionId, setChallengeActionId] = useState("");
   const [challengeEvidenceUrl, setChallengeEvidenceUrl] = useState("");
   const [challengeDisputeReason, setChallengeDisputeReason] = useState("");
   const [challengeDeadline, setChallengeDeadline] = useState(1440);
@@ -125,37 +132,59 @@ export function App() {
     setHighRollerMode,
   } = useAppStore();
   const indexer = useIndexerFeed();
-  const bondEstimate = calculateCreationBond({
+  const fallbackBondEstimate = calculateCreationBond({
     entityType: "Market",
     mode: isUnderworldMode ? "Underworld" : "Vanilla",
     creatorTier: "Basic",
-    categoryRisk: isUnderworldMode ? "High" : "Low",
+    categoryRisk: isUnderworldMode
+      ? "Medium"
+      : /deport|sport|clima|weather/i.test(createCategory) ? "Low" : "Medium",
     reputation: "New",
-    expectedVolumeUsdt: isUnderworldMode ? 500_000_000n : 20_000_000n,
-    disputeCount: isUnderworldMode ? 1 : 0,
+    expectedVolumeUsdt: 0n,
+    disputeCount: 0,
     fraudCount: 0,
     policy: DEFAULT_BOND_POLICY,
   });
   const challengeStakeAmount = parseUsdtInput(challengeStake);
   const challengeRiskLevel = isUnsafeChallenge(challengeTitle, challengeEvidence) ? "Critical" : "Medium";
-  const challengeBondEstimate = calculateCreationBond({
+  const fallbackChallengeBondEstimate = calculateCreationBond({
     entityType: "Challenge",
     mode: "Underworld",
     creatorTier: "Basic",
-    categoryRisk: challengeRiskLevel,
+    categoryRisk: "High",
     reputation: "New",
     expectedVolumeUsdt: challengeStakeAmount,
-    disputeCount: challengeRiskLevel === "Critical" ? 2 : 1,
+    disputeCount: 0,
     fraudCount: 0,
     policy: DEFAULT_BOND_POLICY,
   });
-  const web3 = useWeb3Flow(bondEstimate, quickBetAmount, isUnderworldMode, challengeBondEstimate, challengeStakeAmount);
+  const web3 = useWeb3Flow(
+    fallbackBondEstimate,
+    quickBetAmount,
+    isUnderworldMode,
+    createCategory,
+    fallbackChallengeBondEstimate,
+    challengeStakeAmount,
+  );
+  const bondEstimate = web3.bondEstimate;
+  const challengeBondEstimate = web3.challengeBondEstimate;
   const markets = useMemo(
     () => import.meta.env.DEV ? mergeMarkets(indexer.markets, sampleMarkets) : indexer.markets,
     [indexer.markets],
   );
-  const marketViews = useMemo(() => markets.map(toMarketViewModel), [markets]);
-  const selectedMarketView = marketViews.find((market) => market.id === selectedMarketId) ?? marketViews[0];
+  const nowSeconds = Math.floor(Date.now() / 1_000);
+  const marketViews = useMemo(
+    () => markets.map((market) => toMarketViewModel(market, nowSeconds)),
+    [markets, nowSeconds],
+  );
+  const openMarketViews = marketViews.filter((market) => market.lifecycleLabel === "Abierto");
+  const resolutionMarketViews = marketViews.filter((market) =>
+    market.state === "Open" && market.lifecycleLabel !== "Abierto" || market.state === "Locked" || market.state === "Disputed",
+  );
+  const historyMarketViews = marketViews.filter((market) =>
+    !openMarketViews.includes(market) && !resolutionMarketViews.includes(market),
+  );
+  const selectedMarketView = openMarketViews.find((market) => market.id === selectedMarketId) ?? openMarketViews[0];
   const quote = useMemo(
     () => calculateSelectedMarketQuote(selectedMarketView?.poolByOutcome, web3.selectedOutcome, quickBetAmount),
     [quickBetAmount, selectedMarketView?.poolByOutcome, web3.selectedOutcome],
@@ -265,7 +294,7 @@ export function App() {
 
       {activeTab === "markets" && (
         <MarketsView
-          markets={marketViews}
+          markets={openMarketViews}
           selectedMarket={selectedMarketView}
           quickBetAmount={quickBetAmount}
           quickBetAmountLabel={quickBetAmountLabel}
@@ -296,6 +325,8 @@ export function App() {
         <ChallengesView
           title={challengeTitle}
           indexedChallenges={indexer.challenges}
+          accountAddress={web3.account.address}
+          isArbiter={web3.isChallengeArbiter}
           stake={challengeStake}
           stakeLabel={challengeStakeLabel}
           evidence={challengeEvidence}
@@ -368,6 +399,7 @@ export function App() {
               reason: challengeDisputeReason,
             })
           }
+          onCancel={() => web3.cancelChallenge({ challengeId: challengeActionId, reason: challengeDisputeReason })}
         />
       )}
 
@@ -399,6 +431,7 @@ export function App() {
           desiredChainId={web3.desiredChainId}
           settlementToken={web3.addresses.settlementToken}
           balanceLabel={web3.balanceLabel}
+          gasBalanceLabel={web3.gasBalanceLabel}
           allowanceLabel={web3.allowanceLabel}
           marketId={web3.marketId}
           tx={web3.tx}
@@ -407,6 +440,7 @@ export function App() {
           onApprove={web3.approveSettlement}
           onClaim={web3.claimReward}
           onRefund={web3.claimRefund}
+          onSignXmr={web3.signXmrConversionAuthorization}
         />
       )}
 
@@ -417,6 +451,9 @@ export function App() {
           bondReasons={bondEstimate.reasons}
           indexerStatus={indexer.status}
           marketCount={indexer.marketCount}
+          resolutionMarkets={resolutionMarketViews}
+          historyMarkets={historyMarketViews}
+          isResolver={web3.isMarketResolver}
           onToggleMode={toggleUnderworldMode}
           onResolve={web3.resolveMarket}
           tx={web3.tx}
@@ -669,6 +706,8 @@ function LiveProofPreview({ liveUrl, evidenceUrl }: { liveUrl: string; evidenceU
 function ChallengesView({
   title,
   indexedChallenges,
+  accountAddress,
+  isArbiter,
   stake,
   stakeLabel,
   evidence,
@@ -706,9 +745,12 @@ function ChallengesView({
   onDispute,
   onFinalize,
   onResolveDispute,
+  onCancel,
 }: {
   title: string;
   indexedChallenges: ChallengeDTO[];
+  accountAddress?: string;
+  isArbiter: boolean;
   stake: string;
   stakeLabel: string;
   evidence: string;
@@ -746,7 +788,39 @@ function ChallengesView({
   onDispute: () => void;
   onFinalize: () => void;
   onResolveDispute: (executorSucceeded: boolean) => void;
+  onCancel: () => void;
 }) {
+  const nowSeconds = Math.floor(Date.now() / 1_000);
+  const partitions = partitionChallenges(indexedChallenges, nowSeconds);
+  const selectedChallenge = indexedChallenges.find((challenge) => challenge.id === actionId);
+  const selectedLifecycle = selectedChallenge
+    ? challengeAvailability(selectedChallenge, nowSeconds)
+    : undefined;
+  const normalizedAccount = accountAddress?.toLowerCase();
+  const isCreator = Boolean(
+    selectedChallenge && normalizedAccount && selectedChallenge.creator.toLowerCase() === normalizedAccount,
+  );
+  const isExecutor = Boolean(
+    selectedChallenge?.executor && normalizedAccount && selectedChallenge.executor.toLowerCase() === normalizedAccount,
+  );
+  const isParticipant = isCreator || isExecutor;
+  const canAccept = Boolean(
+    selectedChallenge && selectedChallenge.state === "Open" && selectedLifecycle?.group === "active" && !isCreator,
+  );
+  const canUpdateLive = Boolean(
+    selectedChallenge && isParticipant && ["Accepted", "EvidenceSubmitted"].includes(selectedChallenge.state),
+  );
+  const canSubmitEvidence = Boolean(selectedChallenge && isExecutor && selectedChallenge.state === "Accepted");
+  const canPropose = Boolean(
+    selectedChallenge && isParticipant && selectedChallenge.state === "EvidenceSubmitted",
+  );
+  const canReview = Boolean(selectedChallenge && isParticipant && selectedChallenge.state === "Review");
+  const canFinalize = Boolean(selectedChallenge && selectedChallenge.state === "Review");
+  const canArbitrate = Boolean(selectedChallenge && isArbiter && selectedChallenge.state === "Disputed");
+  const canCancelExpired = Boolean(
+    selectedChallenge && isArbiter && selectedChallenge.state === "Open" && selectedLifecycle?.group === "history",
+  );
+
   return (
     <section className="challenge-layout">
       <div className="challenge-feed">
@@ -765,27 +839,40 @@ function ChallengesView({
             </div>
           ))}
         </div>
-        <div className="challenge-cards">
-          {indexedChallenges.map((challenge) => (
-            <article className="challenge-card live-card" key={challenge.id}>
-              <div className="challenge-card-top">
-                <Flame size={18} />
-                <strong>{challenge.state}</strong>
-              </div>
-              <h3>{challenge.title || `Reto #${challenge.id}`}</h3>
-              <p>{challenge.description || challenge.metadataURI || "Reto creado por usuario con escrow on-chain."}</p>
-              <div className="challenge-meta">
-                <span>{formatUsdt(toBigIntAmount(challenge.rewardPool))} aUSDT</span>
-                <span>ID #{challenge.id}</span>
-                <button onClick={() => onActionId(challenge.id)}>Usar ID #{challenge.id}</button>
-              </div>
-              {challenge.liveStreamURI ? (
-                <a className="live-link" href={challenge.liveStreamURI} target="_blank" rel="noreferrer">Ver live proof</a>
-              ) : (
-                <small>Live pendiente. El ejecutor puede publicarlo al aceptar.</small>
-              )}
-            </article>
-          ))}
+        <ChallengeSection
+          title="Retos activos"
+          empty="No hay retos disponibles para aceptar."
+          challenges={partitions.active}
+          selectedId={actionId}
+          nowSeconds={nowSeconds}
+          onSelect={onActionId}
+        />
+        <ChallengeSection
+          title="En resolucion"
+          empty="No hay retos esperando evidencia, acuerdo o arbitraje."
+          challenges={partitions.resolution}
+          selectedId={actionId}
+          nowSeconds={nowSeconds}
+          onSelect={onActionId}
+        />
+        <details className="history-panel">
+          <summary>Historial ({partitions.history.length})</summary>
+          <ChallengeSection
+            title="Finalizados o vencidos"
+            empty="Todavia no hay historial."
+            challenges={partitions.history}
+            selectedId={actionId}
+            nowSeconds={nowSeconds}
+            onSelect={onActionId}
+          />
+        </details>
+        <div className="section-title compact template-heading">
+          <div>
+            <p className="eyebrow">Inspiracion</p>
+            <h3>Ejemplos, no retos activos</h3>
+          </div>
+        </div>
+        <div className="challenge-cards template-cards">
           {challengeTemplates.map((challenge) => (
             <article className={challenge.status === "No permitido" ? "challenge-card blocked" : "challenge-card"} key={challenge.title}>
               <div className="challenge-card-top">
@@ -889,16 +976,20 @@ function ChallengesView({
         <div className="challenge-actions">
           <div className="section-title compact">
             <div>
-              <p className="eyebrow">Ejecutar o probar flujo</p>
-              <h3>Acciones del reto</h3>
+              <p className="eyebrow">Reto seleccionado</p>
+              <h3>{selectedChallenge ? `#${selectedChallenge.id} · ${selectedLifecycle?.label}` : "Selecciona un reto"}</h3>
             </div>
           </div>
-          <p className="help-text">Selecciona un ID de la lista. Si eres el creador, usa otra wallet para aceptar; el contrato lo bloquea por seguridad.</p>
-          <div className="form-grid">
-            <label>
-              ID del reto
-              <input value={actionId} onChange={(event) => onActionId(event.target.value)} />
-            </label>
+          <p className="help-text">
+            {selectedChallenge
+              ? challengeActionGuidance(selectedChallenge, { isCreator, isExecutor, isArbiter }, nowSeconds)
+              : "Elige una tarjeta de Activos, En resolucion o Historial. Solo apareceran las acciones validas para tu cuenta."}
+          </p>
+          {selectedChallenge && <div className="selected-entity-summary">
+            <strong>{selectedChallenge.title || `Reto #${selectedChallenge.id}`}</strong>
+            <span>Estado on-chain: {selectedChallenge.state}. Tu rol: {isArbiter ? "arbitro" : isCreator ? "creador" : isExecutor ? "ejecutor" : "observador"}.</span>
+          </div>}
+          {selectedChallenge && (canSubmitEvidence || canPropose || canReview || canArbitrate) && <div className="form-grid">
             <label>
               Evidencia final
               <input
@@ -907,13 +998,16 @@ function ChallengesView({
                 placeholder="ipfs://... o https://..."
               />
             </label>
-          </div>
-          <div className="action-grid">
-            <button onClick={onApproveExecutor} disabled={!actionId.trim()}>Autorizar bond ejecutor</button>
-            <button onClick={onAccept} disabled={!actionId.trim()}>Aceptar reto</button>
-            <button onClick={onUpdateLive} disabled={!actionId.trim() || !liveUrl.trim()}>Actualizar live</button>
-            <button onClick={onSubmitEvidence} disabled={!actionId.trim() || !evidenceUrl.trim()}>Enviar evidencia</button>
-          </div>
+          </div>}
+          {canAccept && <div className="action-grid guided-actions">
+            <button onClick={onApproveExecutor}>1. Autorizar bond ejecutor</button>
+            <button onClick={onAccept}>2. Aceptar reto</button>
+          </div>}
+          {canUpdateLive && <div className="action-grid guided-actions">
+            <button onClick={onUpdateLive} disabled={!liveUrl.trim()}>Publicar o actualizar live</button>
+            {canSubmitEvidence && <button onClick={onSubmitEvidence} disabled={!evidenceUrl.trim()}>Enviar evidencia final</button>}
+          </div>}
+          {(canPropose || canReview || canArbitrate) && <>
           <div className="section-title compact">
             <div>
               <p className="eyebrow">Resolucion optimista</p>
@@ -924,34 +1018,123 @@ function ChallengesView({
             Una parte propone el resultado. La otra puede confirmarlo para cerrar antes, o abrir
             una disputa con bond reembolsable si el arbitro le da la razon.
           </p>
-          <label>
+          {(canReview || canArbitrate) && <label>
             Motivo de disputa o arbitraje
             <input
               value={disputeReason}
               onChange={(event) => onDisputeReason(event.target.value)}
               placeholder="Describe el desacuerdo y referencia la evidencia"
             />
-          </label>
+          </label>}
           <div className="action-grid">
-            <button onClick={() => onPropose(true)} disabled={!actionId.trim()}>Proponer: cumplido</button>
-            <button onClick={() => onPropose(false)} disabled={!actionId.trim()}>Proponer: no cumplido</button>
-            <button onClick={() => onConfirm(true)} disabled={!actionId.trim()}>Confirmar: cumplido</button>
-            <button onClick={() => onConfirm(false)} disabled={!actionId.trim()}>Confirmar: no cumplido</button>
-            <button onClick={onApproveDispute} disabled={!actionId.trim()}>Autorizar bond de disputa</button>
-            <button onClick={onDispute} disabled={!actionId.trim() || !disputeReason.trim()}>Abrir disputa</button>
-            <button onClick={onFinalize} disabled={!actionId.trim()}>Finalizar sin disputa</button>
-            <button onClick={() => onResolveDispute(true)} disabled={!actionId.trim() || !disputeReason.trim()}>
+            {canPropose && <button onClick={() => onPropose(true)}>Proponer: cumplido</button>}
+            {canPropose && <button onClick={() => onPropose(false)}>Proponer: no cumplido</button>}
+            {canReview && <button onClick={() => onConfirm(true)}>Confirmar: cumplido</button>}
+            {canReview && <button onClick={() => onConfirm(false)}>Confirmar: no cumplido</button>}
+            {canReview && <button onClick={onApproveDispute}>Autorizar bond de disputa</button>}
+            {canReview && <button onClick={onDispute} disabled={!disputeReason.trim()}>Abrir disputa</button>}
+            {canFinalize && <button onClick={onFinalize}>Finalizar al vencer ventana</button>}
+            {canArbitrate && <button onClick={() => onResolveDispute(true)} disabled={!disputeReason.trim()}>
               Arbitro: cumplido
-            </button>
-            <button onClick={() => onResolveDispute(false)} disabled={!actionId.trim() || !disputeReason.trim()}>
+            </button>}
+            {canArbitrate && <button onClick={() => onResolveDispute(false)} disabled={!disputeReason.trim()}>
               Arbitro: no cumplido
-            </button>
+            </button>}
           </div>
+          </>}
+          {canCancelExpired && <div className="operator-warning">
+            <strong>Reto vencido sin ejecutor</strong>
+            <span>Como arbitro puedes cancelarlo para devolver los fondos escrowed al creador.</span>
+            <button onClick={onCancel}>Cancelar y habilitar reembolso</button>
+          </div>}
         </div>
         <TxState tx={tx} />
       </aside>
     </section>
   );
+}
+
+function ChallengeSection({
+  title,
+  empty,
+  challenges,
+  selectedId,
+  nowSeconds,
+  onSelect,
+}: {
+  title: string;
+  empty: string;
+  challenges: ChallengeDTO[];
+  selectedId: string;
+  nowSeconds: number;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <section className="lifecycle-section">
+      <div className="section-title compact">
+        <h3>{title}</h3>
+        <span>{challenges.length}</span>
+      </div>
+      {challenges.length === 0 ? <p className="empty-inline">{empty}</p> : <div className="challenge-cards">
+        {challenges.map((challenge) => {
+          const availability = challengeAvailability(challenge, nowSeconds);
+          return (
+            <article className={selectedId === challenge.id ? "challenge-card live-card selected" : "challenge-card live-card"} key={challenge.id}>
+              <div className="challenge-card-top">
+                <Flame size={18} />
+                <strong className={`lifecycle-badge ${availability.group}`}>{availability.label}</strong>
+              </div>
+              <h3>{challenge.title || `Reto #${challenge.id}`}</h3>
+              <p>{challenge.description || challenge.metadataURI || "Reto creado por usuario con escrow on-chain."}</p>
+              <div className="challenge-meta">
+                <span>{formatUsdt(toBigIntAmount(challenge.rewardPool))} aUSDT</span>
+                <span>ID #{challenge.id}</span>
+              </div>
+              {challenge.liveStreamURI ? (
+                <a className="live-link" href={challenge.liveStreamURI} target="_blank" rel="noreferrer">Ver live proof</a>
+              ) : (
+                <small>{availability.group === "active" ? "Live pendiente. El ejecutor puede publicarlo al aceptar." : "Sin live publicado."}</small>
+              )}
+              <button className="entity-select" onClick={() => onSelect(challenge.id)}>
+                {selectedId === challenge.id ? "Seleccionado" : availability.group === "history" ? "Ver detalle" : "Gestionar reto"}
+              </button>
+            </article>
+          );
+        })}
+      </div>}
+    </section>
+  );
+}
+
+function challengeActionGuidance(
+  challenge: ChallengeDTO,
+  roles: { isCreator: boolean; isExecutor: boolean; isArbiter: boolean },
+  nowSeconds: number,
+): string {
+  const availability = challengeAvailability(challenge, nowSeconds);
+  if (availability.group === "history") {
+    return challenge.state === "Open"
+      ? "El plazo termino sin ejecutor. Ya no se puede aceptar; un arbitro debe cancelarlo para cerrar el escrow."
+      : "Este reto termino y se conserva solo como historial verificable.";
+  }
+  if (challenge.state === "Open") {
+    return roles.isCreator
+      ? "Eres el creador. Otra wallet debe aceptar y bloquear el bond de ejecutor."
+      : "Para participar: autoriza el bond y luego acepta el reto. Autorizar no mueve fondos; aceptar si los bloquea.";
+  }
+  if (challenge.state === "Accepted") {
+    return roles.isExecutor
+      ? "Publica el live si corresponde y envia la evidencia final al terminar."
+      : "El ejecutor debe publicar la evidencia; puedes seguir el live mientras tanto.";
+  }
+  if (challenge.state === "EvidenceSubmitted") return "Creador o ejecutor puede proponer si el reto se cumplio.";
+  if (challenge.state === "Review") return "La otra parte puede confirmar el mismo resultado, disputar o esperar el fin de la ventana.";
+  if (challenge.state === "Disputed") {
+    return roles.isArbiter
+      ? "Revisa evidencia y motivo. Tu decision on-chain libera o devuelve el escrow y procesa los bonds."
+      : "Existe una disputa. Solo el arbitro autorizado puede emitir la decision final on-chain.";
+  }
+  return "No hay acciones disponibles para esta cuenta en el estado actual.";
 }
 
 function CreateView({
@@ -1053,6 +1236,7 @@ function PortfolioView({
   desiredChainId,
   settlementToken,
   balanceLabel,
+  gasBalanceLabel,
   allowanceLabel,
   marketId,
   tx,
@@ -1061,12 +1245,14 @@ function PortfolioView({
   onApprove,
   onClaim,
   onRefund,
+  onSignXmr,
 }: {
   accountLabel: string;
   depositAddress?: string;
   desiredChainId: number;
   settlementToken?: string;
   balanceLabel: string;
+  gasBalanceLabel: string;
   allowanceLabel: string;
   marketId: string;
   tx: { status: string; label: string; hash?: string; error?: string };
@@ -1075,6 +1261,7 @@ function PortfolioView({
   onApprove: () => void;
   onClaim: () => void;
   onRefund: () => void;
+  onSignXmr: (input: XmrConversionAuthorization) => Promise<Hex>;
 }) {
   return (
     <section className="portfolio-grid">
@@ -1083,7 +1270,17 @@ function PortfolioView({
         <strong>{balanceLabel}</strong>
         <span>aUSDT es un token mock en Base Sepolia para probar Alterford. No es USDT real.</span>
       </InfoCard>
-      <DepositCard depositAddress={depositAddress} desiredChainId={desiredChainId} settlementToken={settlementToken} />
+      <DepositCard
+        depositAddress={depositAddress}
+        desiredChainId={desiredChainId}
+        settlementToken={settlementToken}
+        gasBalanceLabel={gasBalanceLabel}
+      />
+      <XmrConversionCard
+        beneficiary={depositAddress as Address | undefined}
+        chainId={desiredChainId}
+        signAuthorization={onSignXmr}
+      />
       <FiatOnRampCard walletAddress={depositAddress} />
       <InfoCard title="Autorizacion" icon={<ShieldCheck size={18} />}>
         <strong>{allowanceLabel}</strong>
@@ -1110,10 +1307,27 @@ function PortfolioView({
 function FiatOnRampCard({ walletAddress }: { walletAddress?: string }) {
   const gatewayUrl = import.meta.env.VITE_GATEWAY_URL;
   const [amount, setAmount] = useState("25");
+  const [enabled, setEnabled] = useState(false);
   const [status, setStatus] = useState<"idle" | "pending" | "ready" | "failed">("idle");
   const [widgetUrl, setWidgetUrl] = useState("");
   const [error, setError] = useState("");
-  if (!gatewayUrl) return null;
+
+  useEffect(() => {
+    if (!gatewayUrl) return;
+    let active = true;
+    new AlterfordGatewayClient(gatewayUrl).config()
+      .then((config) => {
+        if (active) setEnabled(config.fiatEnabled);
+      })
+      .catch(() => {
+        if (active) setEnabled(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [gatewayUrl]);
+
+  if (!gatewayUrl || !enabled) return null;
 
   async function createSession() {
     if (!walletAddress || !isAddress(walletAddress)) {
@@ -1177,10 +1391,12 @@ function DepositCard({
   depositAddress,
   desiredChainId,
   settlementToken,
+  gasBalanceLabel,
 }: {
   depositAddress?: string;
   desiredChainId: number;
   settlementToken?: string;
+  gasBalanceLabel: string;
 }) {
   const [manualAddress, setManualAddress] = useState("");
   const address = (depositAddress || manualAddress).trim();
@@ -1193,10 +1409,10 @@ function DepositCard({
   }
 
   return (
-    <InfoCard title="Depositar cripto" icon={<QrIcon />}>
-      <span>Recibir fondos no firma transacciones ni cobra gas.</span>
+    <InfoCard title="Recibir fondos en Alterford" icon={<QrIcon />}>
+      <span>Esta es la unica direccion receptora de esta cuenta.</span>
       <label>
-        Direccion de cuenta Alterford
+        Direccion receptora de tu cuenta Alterford
         <input
           value={address}
           onChange={(event) => setManualAddress(event.target.value)}
@@ -1207,9 +1423,12 @@ function DepositCard({
       <div className="deposit-qr" aria-label="QR de deposito cripto">
         <QRCodeSVG value={qrValue} size={148} marginSize={2} />
       </div>
-      <span>Red requerida: Base Sepolia. En mainnet debe usarse Base Mainnet; BTC/XMR/QR fiat necesitan pasarela externa antes de acreditar saldo.</span>
-      <small>Token de prueba: {settlementToken || "no configurado"}</small>
-      <button onClick={copyAddress} disabled={!validAddress}>Copiar direccion</button>
+      <span>Red requerida: Base Sepolia. Envia solo ETH de Base Sepolia para gas o aUSDT del contrato indicado abajo.</span>
+      <strong>Saldo para gas: {gasBalanceLabel}</strong>
+      <small>ETH de Base Sepolia es gas y no se suma al saldo aUSDT.</small>
+      <small>Contrato aUSDT (dato tecnico, no enviar fondos aqui)</small>
+      <code>{settlementToken || "no configurado"}</code>
+      <button onClick={copyAddress} disabled={!validAddress}>Copiar direccion receptora</button>
       {!validAddress && <small>Conecta una wallet o pega una direccion 0x valida para generar el QR.</small>}
     </InfoCard>
   );
@@ -1229,6 +1448,9 @@ function CreatorView({
   bondReasons,
   indexerStatus,
   marketCount,
+  resolutionMarkets,
+  historyMarkets,
+  isResolver,
   tx,
   onToggleMode,
   onResolve,
@@ -1238,10 +1460,14 @@ function CreatorView({
   bondReasons: readonly string[];
   indexerStatus: string;
   marketCount: number;
+  resolutionMarkets: MarketViewModel[];
+  historyMarkets: MarketViewModel[];
+  isResolver: boolean;
   tx: { status: string; label: string; hash?: string; error?: string };
   onToggleMode: () => void;
-  onResolve: () => void;
+  onResolve: (input: { marketId: string; winningOutcome: 0 | 1 }) => void;
 }) {
+  const [outcomes, setOutcomes] = useState<Record<string, 0 | 1>>({});
   return (
     <section className="portfolio-grid">
       <InfoCard title="Modo del creador" icon={<Flame size={18} />}>
@@ -1262,8 +1488,45 @@ function CreatorView({
         <span>{marketCount} mercados indexados</span>
       </InfoCard>
       <InfoCard title="Operador" icon={<BadgeCheck size={18} />}>
-        <span>Resolver solo debe usarse cuando el resultado real ya es claro.</span>
-        <button onClick={onResolve}>Resolver mercado seleccionado</button>
+        <strong>{isResolver ? "Rol RESOLVER activo" : "Modo lectura"}</strong>
+        <span>
+          {isResolver
+            ? "Verifica la fuente externa y elige explicitamente el resultado de cada mercado. Resolver distribuye el pool; no se puede deshacer."
+            : "La wallet conectada no tiene permiso para resolver. Conecta la wallet oficial del operador."}
+        </span>
+        <div className="operator-market-list">
+          {resolutionMarkets.length === 0 && <small>No hay mercados pendientes de resolucion.</small>}
+          {resolutionMarkets.map((market) => (
+            <article className="operator-market" key={market.id}>
+              <div>
+                <strong>#{market.id} · {market.lifecycleLabel}</strong>
+                <span>{market.title}</span>
+                {market.resolutionTime && <small>Resolucion programada: {formatLifecycleTime(market.resolutionTime)}</small>}
+              </div>
+              <div className="operator-outcome" aria-label={`Resultado del mercado ${market.id}`}>
+                <button
+                  className={(outcomes[market.id] ?? 0) === 0 ? "selected yes" : "yes"}
+                  onClick={() => setOutcomes((current) => ({ ...current, [market.id]: 0 }))}
+                >SI</button>
+                <button
+                  className={outcomes[market.id] === 1 ? "selected no" : "no"}
+                  onClick={() => setOutcomes((current) => ({ ...current, [market.id]: 1 }))}
+                >NO</button>
+                <button
+                  className="resolve-button"
+                  onClick={() => onResolve({ marketId: market.id, winningOutcome: outcomes[market.id] ?? 0 })}
+                  disabled={!isResolver || !market.canResolve}
+                >
+                  {market.canResolve ? "Resolver ahora" : "Esperando hora de resolucion"}
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+        <details className="history-panel compact-history">
+          <summary>Mercados finalizados ({historyMarkets.length})</summary>
+          {historyMarkets.map((market) => <small key={market.id}>#{market.id} · {market.state} · {market.title}</small>)}
+        </details>
         <TxState tx={tx} />
       </InfoCard>
     </section>
@@ -1335,7 +1598,8 @@ function mergeMarkets(indexed: MarketDTO[], fallback: MarketDTO[]): MarketDTO[] 
   return normalized.length > 0 ? normalized : fallback;
 }
 
-function toMarketViewModel(market: MarketDTO): MarketViewModel {
+function toMarketViewModel(market: MarketDTO, nowSeconds: number): MarketViewModel {
+  const lifecycle = marketAvailability(market, nowSeconds);
   return {
     id: market.id,
     title: market.title,
@@ -1345,7 +1609,18 @@ function toMarketViewModel(market: MarketDTO): MarketViewModel {
     yesOdds: market.impliedOddsByOutcome?.[0] ?? 50,
     noOdds: market.impliedOddsByOutcome?.[1] ?? 50,
     poolByOutcome: toPoolArray(market.poolByOutcome),
+    lockTime: market.lockTime || "",
+    resolutionTime: market.resolutionTime || "",
+    lifecycleLabel: lifecycle.label,
+    canResolve: lifecycle.group === "resolution" && lifecycle.actionable,
   };
+}
+
+function formatLifecycleTime(value: string): string {
+  if (!value) return "No disponible";
+  const numeric = Number(value);
+  const date = Number.isFinite(numeric) ? new Date(numeric * 1_000) : new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString("es-BO");
 }
 
 function calculateSelectedMarketQuote(

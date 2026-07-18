@@ -3,6 +3,7 @@ import type {
   BountyState,
   Category,
   ChallengeState,
+  MarketState,
   ModeAffinity,
   RiskLevel,
 } from "@alterford/sdk";
@@ -36,6 +37,11 @@ export type AlterfordEvent =
         settlementToken?: Address;
         metadataHash?: string;
         metadataURI?: string;
+        categoryId?: string;
+        riskLevel?: RiskLevel;
+        lockTime?: bigint;
+        resolutionTime?: bigint;
+        state?: MarketState;
       }
     >
   | EventEnvelope<
@@ -54,6 +60,9 @@ export type AlterfordEvent =
         winningOutcome: number;
       }
     >
+  | EventEnvelope<"MarketLocked", { marketId: string }>
+  | EventEnvelope<"MarketCancelled", { marketId: string; reasonHash: string }>
+  | EventEnvelope<"MarketFraudConfirmed", { marketId: string; reasonHash: string }>
   | EventEnvelope<
       "FeesAccrued",
       {
@@ -111,6 +120,9 @@ export type AlterfordEvent =
         deadline?: bigint;
         metadataURI?: string;
         state?: BountyState;
+        categoryId?: string;
+        modeAffinity?: ModeAffinity;
+        riskLevel?: RiskLevel;
       }
     >
   | EventEnvelope<
@@ -177,6 +189,8 @@ export type AlterfordEvent =
         deadline?: bigint;
         state?: ChallengeState;
         riskLevel?: RiskLevel;
+        categoryId?: string;
+        modeAffinity?: ModeAffinity;
       }
     >
   | EventEnvelope<
