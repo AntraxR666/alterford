@@ -8,10 +8,7 @@ COPY . .
 
 RUN pnpm install --frozen-lockfile \
   && pnpm --filter @alterford/sdk build \
-  && pnpm --filter @alterford/gateway build \
-  && mkdir -p /data
-
-VOLUME ["/data"]
+  && pnpm --filter @alterford/gateway build
 
 ENV NODE_ENV=production
 
