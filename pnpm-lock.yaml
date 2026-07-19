@@ -121,12 +121,22 @@ importers:
       '@biconomy/abstractjs':
         specifier: ^1.2.5
         version: 1.2.5(@metamask/delegation-toolkit@0.11.0(viem@2.52.2(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3)))(@noble/curves@2.0.1)(@openzeppelin/merkle-tree@1.0.8)(@rhinestone/module-sdk@0.4.0(viem@2.52.2(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3)))(@safe-global/types-kit@3.0.0(typescript@5.9.3)(zod@4.4.3))(typescript@5.9.3)(viem@2.52.2(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3))
+      '@fleek-platform/sdk':
+        specifier: 3.7.2
+        version: 3.7.2
       '@gelatocloud/gasless':
         specifier: 0.0.12
         version: 0.0.12(bufferutil@4.1.0)(utf-8-validate@5.0.10)(viem@2.52.2(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3))
+      json-bigint:
+        specifier: ^1.0.0
+        version: 1.0.0
       viem:
         specifier: ^2.45.0
         version: 2.52.2(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3)
+    devDependencies:
+      '@types/json-bigint':
+        specifier: ^1.0.4
+        version: 1.0.4
 
   packages/indexer:
     dependencies:
@@ -2790,6 +2800,9 @@ packages:
 
   '@types/estree@1.0.9':
     resolution: {integrity: sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg==}
+
+  '@types/json-bigint@1.0.4':
+    resolution: {integrity: sha512-ydHooXLbOmxBbubnA7Eh+RpBzuaIiQjh8WGJYQB50JFGFrdxW7JzVlyEV7fAXw0T2sqJ1ysTneJbiyNLqZRAag==}
 
   '@types/lodash@4.17.24':
     resolution: {integrity: sha512-gIW7lQLZbue7lRSWEFql49QJJWThrTFFeIMJdp3eH4tKoxm1OvEPg02rm4wCCSHS0cL3/Fizimb35b7k8atwsQ==}
@@ -10075,6 +10088,8 @@ snapshots:
 
   '@types/estree@1.0.9': {}
 
+  '@types/json-bigint@1.0.4': {}
+
   '@types/lodash@4.17.24': {}
 
   '@types/ms@2.1.0': {}
@@ -12737,7 +12752,6 @@ snapshots:
   json-bigint@1.0.0:
     dependencies:
       bignumber.js: 9.3.1
-    optional: true
 
   json-rpc-engine@6.1.0:
     dependencies:

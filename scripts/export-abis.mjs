@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 const contracts = [
   "MockSettlementToken",
   "CreationBondPolicy",
+  "CreationBondContextResolver",
   "AlterfordForwarder",
   "MarketFactory",
   "BountyFactory",

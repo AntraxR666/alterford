@@ -6,6 +6,7 @@ import { ReentrancyGuardLite } from "../security/ReentrancyGuardLite.sol";
 import { AlterfordTypes } from "../libraries/AlterfordTypes.sol";
 import { AlterfordErrors } from "../libraries/AlterfordErrors.sol";
 import { CreationBondPolicy } from "../bonds/CreationBondPolicy.sol";
+import { CreationBondContextResolver } from "../bonds/CreationBondContextResolver.sol";
 import { IERC20 } from "../token/IERC20.sol";
 
 interface IBountyRecoveryVault {
@@ -24,22 +25,39 @@ contract BountyFactory is Governed, ReentrancyGuardLite {
         bytes32 rulesHash;
         string metadataURI;
         AlterfordTypes.BountyState state;
+        bytes32 categoryId;
+        AlterfordTypes.Mode mode;
+        AlterfordTypes.RiskLevel riskLevel;
     }
 
     uint256 public nextBountyId = 1;
     CreationBondPolicy public bondPolicy;
+    CreationBondContextResolver public bondContextResolver;
     address public recoveryVault;
     mapping(uint256 => Bounty) public bounties;
     mapping(uint256 => mapping(address => bytes32)) public submissionHashByUser;
+    mapping(uint256 => mapping(address => string)) public submissionURIByUser;
     mapping(uint256 => uint256) public bondByBounty;
     mapping(uint256 => bool) public bondFinalized;
     mapping(uint256 => uint256) public rewardEscrowByBounty;
 
     event BountyCreated(
-        uint256 indexed bountyId, address indexed creator, uint256 rewardPool, bytes32 rulesHash
+        uint256 indexed bountyId,
+        address indexed creator,
+        uint256 rewardPool,
+        bytes32 rulesHash,
+        bytes32 categoryId,
+        AlterfordTypes.Mode mode,
+        AlterfordTypes.RiskLevel riskLevel
     );
     event SubmissionCreated(
         uint256 indexed bountyId, address indexed submitter, bytes32 submissionHash
+    );
+    event SubmissionEvidenceCreated(
+        uint256 indexed bountyId,
+        address indexed submitter,
+        bytes32 submissionHash,
+        string evidenceURI
     );
     event BountyResolved(uint256 indexed bountyId, address[] winners, uint256[] amounts);
     event BountyCancelled(uint256 indexed bountyId, bytes32 reasonHash);
@@ -54,6 +72,7 @@ contract BountyFactory is Governed, ReentrancyGuardLite {
         address securityAdmin
     );
     event BondPolicyUpdated(address indexed oldPolicy, address indexed newPolicy);
+    event BondContextResolverUpdated(address indexed oldResolver, address indexed newResolver);
     event BondCalculated(
         bytes32 indexed entityType,
         uint256 indexed entityId,
@@ -77,10 +96,23 @@ contract BountyFactory is Governed, ReentrancyGuardLite {
         bytes32 indexed entityType, uint256 indexed entityId, uint256 amount, bytes32 reasonHash
     );
 
-    constructor(address initialAdmin, address initialBondPolicy) Governed(initialAdmin) {
-        if (initialBondPolicy == address(0)) revert AlterfordErrors.InvalidBondPolicy();
+    constructor(address initialAdmin, address initialBondPolicy, address initialBondContextResolver)
+        Governed(initialAdmin)
+    {
+        if (initialBondPolicy == address(0) || initialBondContextResolver == address(0)) {
+            revert AlterfordErrors.InvalidBondPolicy();
+        }
         bondPolicy = CreationBondPolicy(initialBondPolicy);
+        bondContextResolver = CreationBondContextResolver(initialBondContextResolver);
         emit BondPolicyUpdated(address(0), initialBondPolicy);
+        emit BondContextResolverUpdated(address(0), initialBondContextResolver);
+    }
+
+    function setBondContextResolver(address nextResolver) external onlyRole(GOVERNOR_ROLE) {
+        if (nextResolver == address(0)) revert AlterfordErrors.InvalidBondPolicy();
+        address oldResolver = address(bondContextResolver);
+        bondContextResolver = CreationBondContextResolver(nextResolver);
+        emit BondContextResolverUpdated(oldResolver, nextResolver);
     }
 
     function setBondPolicy(address nextBondPolicy) external onlyRole(GOVERNOR_ROLE) {
@@ -104,7 +136,7 @@ contract BountyFactory is Governed, ReentrancyGuardLite {
         uint256 deadline,
         bytes32 rulesHash,
         string calldata metadataURI,
-        CreationBondPolicy.BondContext calldata bondContext
+        bytes32 categoryId
     ) external nonReentrant whenNotPaused returns (uint256 bountyId) {
         if (settlementToken == address(0)) {
             revert AlterfordErrors.InvalidToken();
@@ -112,10 +144,9 @@ contract BountyFactory is Governed, ReentrancyGuardLite {
         if (rewardPool == 0) revert AlterfordErrors.InvalidAmount();
         if (deadline <= block.timestamp) revert AlterfordErrors.InvalidAmount();
         if (rulesHash == bytes32(0)) revert AlterfordErrors.InvalidMetadataHash();
-        if (bondContext.entityType != AlterfordTypes.EntityType.Bounty) {
-            revert AlterfordErrors.InvalidBondPolicy();
-        }
-
+        CreationBondPolicy.BondContext memory bondContext = bondContextResolver.resolve(
+            msg.sender, AlterfordTypes.EntityType.Bounty, categoryId, rewardPool
+        );
         (uint256 requiredBond, uint16 reasonFlags) = bondPolicy.previewBond(bondContext);
         bountyId = nextBountyId++;
 
@@ -126,7 +157,10 @@ contract BountyFactory is Governed, ReentrancyGuardLite {
             deadline: deadline,
             rulesHash: rulesHash,
             metadataURI: metadataURI,
-            state: AlterfordTypes.BountyState.Open
+            state: AlterfordTypes.BountyState.Open,
+            categoryId: categoryId,
+            mode: bondContext.mode,
+            riskLevel: bondContext.categoryRisk
         });
 
         bondByBounty[bountyId] = requiredBond;
@@ -138,7 +172,15 @@ contract BountyFactory is Governed, ReentrancyGuardLite {
 
         emit BondCalculated("Bounty", bountyId, msg.sender, requiredBond, reasonFlags);
         emit BondLocked("Bounty", bountyId, msg.sender, requiredBond);
-        emit BountyCreated(bountyId, msg.sender, rewardPool, rulesHash);
+        emit BountyCreated(
+            bountyId,
+            msg.sender,
+            rewardPool,
+            rulesHash,
+            categoryId,
+            bondContext.mode,
+            bondContext.categoryRisk
+        );
     }
 
     function releaseBond(uint256 bountyId) external nonReentrant onlyRole(GOVERNOR_ROLE) {
@@ -164,6 +206,23 @@ contract BountyFactory is Governed, ReentrancyGuardLite {
     }
 
     function submit(uint256 bountyId, bytes32 submissionHash) external whenNotPaused {
+        _recordSubmission(bountyId, submissionHash);
+    }
+
+    function submitEvidence(uint256 bountyId, bytes32 submissionHash, string calldata evidenceURI)
+        external
+        whenNotPaused
+    {
+        if (
+            bytes(evidenceURI).length == 0 || submissionHash == bytes32(0)
+                || keccak256(bytes(evidenceURI)) != submissionHash
+        ) revert AlterfordErrors.InvalidMetadataHash();
+        _recordSubmission(bountyId, submissionHash);
+        submissionURIByUser[bountyId][msg.sender] = evidenceURI;
+        emit SubmissionEvidenceCreated(bountyId, msg.sender, submissionHash, evidenceURI);
+    }
+
+    function _recordSubmission(uint256 bountyId, bytes32 submissionHash) private {
         Bounty storage bounty = bounties[bountyId];
         if (bounty.state != AlterfordTypes.BountyState.Open) revert AlterfordErrors.InvalidState();
         if (block.timestamp > bounty.deadline) revert AlterfordErrors.InvalidState();

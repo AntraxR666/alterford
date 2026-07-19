@@ -58,20 +58,7 @@ export const marketFactoryAbi = [
       { name: "lockTime", type: "uint256" },
       { name: "resolutionTime", type: "uint256" },
       { name: "noWinnersPolicy", type: "uint8" },
-      {
-        name: "bondContext",
-        type: "tuple",
-        components: [
-          { name: "entityType", type: "uint8" },
-          { name: "mode", type: "uint8" },
-          { name: "creatorTier", type: "uint8" },
-          { name: "categoryRisk", type: "uint8" },
-          { name: "reputation", type: "uint8" },
-          { name: "expectedVolume", type: "uint256" },
-          { name: "disputeCount", type: "uint256" },
-          { name: "fraudCount", type: "uint256" },
-        ],
-      },
+      { name: "categoryId", type: "bytes32" },
     ],
     outputs: [{ name: "marketId", type: "uint256" }],
   },
@@ -193,6 +180,9 @@ export const marketFactoryAbi = [
       { name: "settlementToken", type: "address", indexed: true },
       { name: "metadataHash", type: "bytes32", indexed: false },
       { name: "metadataURI", type: "string", indexed: false },
+      { name: "categoryId", type: "bytes32", indexed: false },
+      { name: "mode", type: "uint8", indexed: false },
+      { name: "riskLevel", type: "uint8", indexed: false },
     ],
   },
   {
@@ -334,6 +324,52 @@ export const creationBondPolicyAbi = [
   },
 ] as const;
 
+export const creationBondContextResolverAbi = [
+  {
+    type: "function",
+    name: "previewBond",
+    stateMutability: "view",
+    inputs: [
+      { name: "policy", type: "address" },
+      { name: "creator", type: "address" },
+      { name: "entityType", type: "uint8" },
+      { name: "categoryId", type: "bytes32" },
+      { name: "expectedVolume", type: "uint256" },
+    ],
+    outputs: [
+      { name: "amount", type: "uint256" },
+      { name: "reasonFlags", type: "uint16" },
+    ],
+  },
+  {
+    type: "function",
+    name: "resolve",
+    stateMutability: "view",
+    inputs: [
+      { name: "creator", type: "address" },
+      { name: "entityType", type: "uint8" },
+      { name: "categoryId", type: "bytes32" },
+      { name: "expectedVolume", type: "uint256" },
+    ],
+    outputs: [
+      {
+        name: "context",
+        type: "tuple",
+        components: [
+          { name: "entityType", type: "uint8" },
+          { name: "mode", type: "uint8" },
+          { name: "creatorTier", type: "uint8" },
+          { name: "categoryRisk", type: "uint8" },
+          { name: "reputation", type: "uint8" },
+          { name: "expectedVolume", type: "uint256" },
+          { name: "disputeCount", type: "uint256" },
+          { name: "fraudCount", type: "uint256" },
+        ],
+      },
+    ],
+  },
+] as const;
+
 export const challengeFactoryAbi = [
   {
     type: "function",
@@ -352,6 +388,8 @@ export const challengeFactoryAbi = [
       { name: "state", type: "uint8" },
       { name: "evidenceHash", type: "bytes32" },
       { name: "evidenceURI", type: "string" },
+      { name: "categoryId", type: "bytes32" },
+      { name: "mode", type: "uint8" },
       { name: "riskLevel", type: "uint8" },
     ],
   },
@@ -365,20 +403,7 @@ export const challengeFactoryAbi = [
       { name: "rulesHash", type: "bytes32" },
       { name: "metadataURI", type: "string" },
       { name: "deadline", type: "uint256" },
-      {
-        name: "bondContext",
-        type: "tuple",
-        components: [
-          { name: "entityType", type: "uint8" },
-          { name: "mode", type: "uint8" },
-          { name: "creatorTier", type: "uint8" },
-          { name: "categoryRisk", type: "uint8" },
-          { name: "reputation", type: "uint8" },
-          { name: "expectedVolume", type: "uint256" },
-          { name: "disputeCount", type: "uint256" },
-          { name: "fraudCount", type: "uint256" },
-        ],
-      },
+      { name: "categoryId", type: "bytes32" },
     ],
     outputs: [{ name: "challengeId", type: "uint256" }],
   },
@@ -537,6 +562,9 @@ export const challengeFactoryAbi = [
       { name: "creator", type: "address", indexed: true },
       { name: "rewardPool", type: "uint256", indexed: false },
       { name: "rulesHash", type: "bytes32", indexed: false },
+      { name: "categoryId", type: "bytes32", indexed: false },
+      { name: "mode", type: "uint8", indexed: false },
+      { name: "riskLevel", type: "uint8", indexed: false },
     ],
   },
   {
@@ -688,20 +716,7 @@ export const bountyFactoryAbi = [
       { name: "deadline", type: "uint256" },
       { name: "rulesHash", type: "bytes32" },
       { name: "metadataURI", type: "string" },
-      {
-        name: "bondContext",
-        type: "tuple",
-        components: [
-          { name: "entityType", type: "uint8" },
-          { name: "mode", type: "uint8" },
-          { name: "creatorTier", type: "uint8" },
-          { name: "categoryRisk", type: "uint8" },
-          { name: "reputation", type: "uint8" },
-          { name: "expectedVolume", type: "uint256" },
-          { name: "disputeCount", type: "uint256" },
-          { name: "fraudCount", type: "uint256" },
-        ],
-      },
+      { name: "categoryId", type: "bytes32" },
     ],
     outputs: [{ name: "bountyId", type: "uint256" }],
   },
@@ -718,6 +733,9 @@ export const bountyFactoryAbi = [
       { name: "rulesHash", type: "bytes32" },
       { name: "metadataURI", type: "string" },
       { name: "state", type: "uint8" },
+      { name: "categoryId", type: "bytes32" },
+      { name: "mode", type: "uint8" },
+      { name: "riskLevel", type: "uint8" },
     ],
   },
   {
@@ -748,6 +766,17 @@ export const bountyFactoryAbi = [
     inputs: [
       { name: "bountyId", type: "uint256" },
       { name: "submissionHash", type: "bytes32" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "submitEvidence",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "bountyId", type: "uint256" },
+      { name: "submissionHash", type: "bytes32" },
+      { name: "evidenceURI", type: "string" },
     ],
     outputs: [],
   },
@@ -790,6 +819,9 @@ export const bountyFactoryAbi = [
       { name: "creator", type: "address", indexed: true },
       { name: "rewardPool", type: "uint256", indexed: false },
       { name: "rulesHash", type: "bytes32", indexed: false },
+      { name: "categoryId", type: "bytes32", indexed: false },
+      { name: "mode", type: "uint8", indexed: false },
+      { name: "riskLevel", type: "uint8", indexed: false },
     ],
   },
   {
@@ -799,6 +831,16 @@ export const bountyFactoryAbi = [
       { name: "bountyId", type: "uint256", indexed: true },
       { name: "submitter", type: "address", indexed: true },
       { name: "submissionHash", type: "bytes32", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "SubmissionEvidenceCreated",
+    inputs: [
+      { name: "bountyId", type: "uint256", indexed: true },
+      { name: "submitter", type: "address", indexed: true },
+      { name: "submissionHash", type: "bytes32", indexed: false },
+      { name: "evidenceURI", type: "string", indexed: false },
     ],
   },
   {

@@ -15,6 +15,11 @@
     "@alterford/sdk": "workspace:*",
     "@biconomy/abstractjs": "^1.2.5",
     "@gelatocloud/gasless": "0.0.12",
+    "@fleek-platform/sdk": "3.7.2",
+    "json-bigint": "^1.0.0",
     "viem": "^2.45.0"
+  },
+  "devDependencies": {
+    "@types/json-bigint": "^1.0.4"
   }
 }

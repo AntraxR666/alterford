@@ -5,6 +5,7 @@ import { AlterfordForwarder } from "../src/metatx/AlterfordForwarder.sol";
 import { ERC2771Forwarder } from "@openzeppelin/contracts/metatx/ERC2771Forwarder.sol";
 import { ChallengeFactory } from "../src/factories/ChallengeFactory.sol";
 import { CreationBondPolicy } from "../src/bonds/CreationBondPolicy.sol";
+import { CreationBondContextResolver } from "../src/bonds/CreationBondContextResolver.sol";
 import { AlterfordTypes } from "../src/libraries/AlterfordTypes.sol";
 import { MockSettlementToken } from "../src/token/MockSettlementToken.sol";
 
@@ -32,8 +33,10 @@ contract Phase2MetaTransactionsTest {
         address creator = vm.addr(creatorKey);
         AlterfordForwarder forwarder = new AlterfordForwarder();
         CreationBondPolicy policy = new CreationBondPolicy(address(this));
-        ChallengeFactory factory =
-            new ChallengeFactory(address(this), address(policy), address(forwarder));
+        CreationBondContextResolver resolver = new CreationBondContextResolver(address(this));
+        ChallengeFactory factory = new ChallengeFactory(
+            address(this), address(policy), address(resolver), address(forwarder)
+        );
         MockSettlementToken token = new MockSettlementToken();
 
         token.mint(creator, 30_000_000);
@@ -48,7 +51,7 @@ contract Phase2MetaTransactionsTest {
                 keccak256("phase-2-rules"),
                 "ipfs://phase-2-challenge",
                 block.timestamp + 12 hours,
-                _bondContext(20_000_000)
+                resolver.CATEGORY_VANILLA_CHALLENGE()
             )
         );
         ERC2771Forwarder.ForwardRequestData memory request = ERC2771Forwarder.ForwardRequestData({
@@ -64,7 +67,7 @@ contract Phase2MetaTransactionsTest {
 
         forwarder.execute(request);
 
-        (address recordedCreator,,,,,,,,,,,) = factory.challenges(1);
+        (address recordedCreator,,,,,,,,,,,,,) = factory.challenges(1);
         require(recordedCreator == creator, "forwarded signer not recorded");
         require(forwarder.nonces(creator) == 1, "forwarder nonce not consumed");
 
@@ -94,8 +97,10 @@ contract Phase2MetaTransactionsTest {
         require(!forwarder.verify(request), "untrusted target accepted");
 
         CreationBondPolicy policy = new CreationBondPolicy(address(this));
-        ChallengeFactory factory =
-            new ChallengeFactory(address(this), address(policy), address(forwarder));
+        CreationBondContextResolver resolver = new CreationBondContextResolver(address(this));
+        ChallengeFactory factory = new ChallengeFactory(
+            address(this), address(policy), address(resolver), address(forwarder)
+        );
         request.to = address(factory);
         request.deadline = uint48(block.timestamp - 1);
         request.data = abi.encodeWithSignature("pause()");
@@ -108,7 +113,9 @@ contract Phase2MetaTransactionsTest {
         address admin = vm.addr(adminKey);
         AlterfordForwarder forwarder = new AlterfordForwarder();
         CreationBondPolicy policy = new CreationBondPolicy(admin);
-        ChallengeFactory factory = new ChallengeFactory(admin, address(policy), address(forwarder));
+        CreationBondContextResolver resolver = new CreationBondContextResolver(admin);
+        ChallengeFactory factory =
+            new ChallengeFactory(admin, address(policy), address(resolver), address(forwarder));
         ERC2771Forwarder.ForwardRequestData memory request = ERC2771Forwarder.ForwardRequestData({
             from: admin,
             to: address(factory),

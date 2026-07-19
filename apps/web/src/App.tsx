@@ -5,11 +5,13 @@ import {
   Bell,
   CheckCircle2,
   ChevronRight,
+  CircleHelp,
   Eye,
   FileCheck,
   Flame,
   Gauge,
   History,
+  ImagePlus,
   LockKeyhole,
   Mail,
   PlusCircle,
@@ -17,6 +19,7 @@ import {
   Siren,
   Sparkles,
   Trophy,
+  UploadCloud,
   UserRound,
   WalletCards,
   Zap,
@@ -32,19 +35,34 @@ import {
   calculateCreationBond,
   calculateMarketSettlement,
   formatUsdt,
+  type BountyDTO,
   type ChallengeDTO,
   type MarketDTO,
   type XmrConversionAuthorization,
 } from "@alterford/sdk";
-import { sampleMarkets } from "./features/markets/sampleMarkets";
-import { challengeAvailability, marketAvailability, partitionChallenges } from "./features/lifecycle";
+import {
+  challengeAvailability,
+  challengeCountdown,
+  bountyCountdown,
+  marketAvailability,
+  marketCountdown,
+  partitionChallenges,
+} from "./features/lifecycle";
 import { XmrConversionCard } from "./features/xmr/XmrConversionCard";
+import { challengeWorkflow, filterChallengesByMode } from "./features/challenges/challengeWorkflow";
+import { bountyWorkflow, filterBountiesByMode } from "./features/bounties/bountyWorkflow";
+import {
+  DEFAULT_EVIDENCE_UPLOAD_POLICY,
+  evidenceFileToBase64,
+  validateEvidenceImage,
+} from "./features/bounties/evidenceUpload";
 import { useIndexerFeed } from "./hooks/useIndexerFeed";
-import { useWeb3Flow } from "./hooks/useWeb3Flow";
-import { useAppStore } from "./stores/appStore";
+import { useLiveNow } from "./hooks/useLiveNow";
+import { useWeb3Flow, type ChallengeExecutionMode } from "./hooks/useWeb3Flow";
+import { useAppStore, type ApprovalMode } from "./stores/appStore";
 import { AlterfordGatewayClient } from "./web3/gatewayClient";
 
-type TabId = "markets" | "challenges" | "create" | "portfolio" | "creator";
+type TabId = "markets" | "challenges" | "bounties" | "create" | "portfolio" | "creator";
 type MarketViewModel = {
   id: string;
   title: string;
@@ -57,8 +75,13 @@ type MarketViewModel = {
   lockTime: string;
   resolutionTime: string;
   lifecycleLabel: string;
+  countdownLabel?: string;
+  countdownUrgency?: "none" | "normal" | "high";
+  countdownTarget?: string;
   canResolve: boolean;
 };
+
+const ONBOARDING_STORAGE_KEY = "alterford:intro-dismissed:v1";
 
 type MarketQuoteView = ReturnType<typeof calculateMarketSettlement> & {
   sameSidePoolBefore: bigint;
@@ -71,6 +94,7 @@ type MarketQuoteView = ReturnType<typeof calculateMarketSettlement> & {
 const tabs: Array<{ id: TabId; label: string; icon: ReactNode }> = [
   { id: "markets", label: "Mercados", icon: <Gauge size={16} /> },
   { id: "challenges", label: "Retos", icon: <Flame size={16} /> },
+  { id: "bounties", label: "Bounties", icon: <Trophy size={16} /> },
   { id: "create", label: "Crear", icon: <PlusCircle size={16} /> },
   { id: "portfolio", label: "Mi saldo", icon: <WalletCards size={16} /> },
   { id: "creator", label: "Creator Center", icon: <BarChart3 size={16} /> },
@@ -109,6 +133,13 @@ const underworldProofSteps = [
 ];
 
 export function App() {
+  const [showIntro, setShowIntro] = useState(() => {
+    try {
+      return window.localStorage.getItem(ONBOARDING_STORAGE_KEY) !== "1";
+    } catch {
+      return true;
+    }
+  });
   const [activeTab, setActiveTab] = useState<TabId>("markets");
   const [createQuestion, setCreateQuestion] = useState("ETH cerrara sobre $4,000 esta semana?");
   const [createCategory, setCreateCategory] = useState("Crypto");
@@ -123,13 +154,23 @@ export function App() {
   const [challengeEvidenceUrl, setChallengeEvidenceUrl] = useState("");
   const [challengeDisputeReason, setChallengeDisputeReason] = useState("");
   const [challengeDeadline, setChallengeDeadline] = useState(1440);
+  const [bountyTitle, setBountyTitle] = useState("Recompensa por la mejor evidencia verificable");
+  const [bountyDescription, setBountyDescription] = useState("Publica una entrega verificable antes del cierre.");
+  const [bountyReward, setBountyReward] = useState("50");
+  const [bountyDeadline, setBountyDeadline] = useState(1_440);
+  const [bountyActionId, setBountyActionId] = useState("");
+  const [bountyEvidence, setBountyEvidence] = useState("");
+  const [bountyWinner, setBountyWinner] = useState("");
+  const [bountyReason, setBountyReason] = useState("");
   const {
     isUnderworldMode,
     quickBetAmount,
     highRollerMode,
+    approvalMode,
     toggleUnderworldMode,
     setQuickBetAmount,
     setHighRollerMode,
+    setApprovalMode,
   } = useAppStore();
   const indexer = useIndexerFeed();
   const fallbackBondEstimate = calculateCreationBond({
@@ -149,11 +190,23 @@ export function App() {
   const challengeRiskLevel = isUnsafeChallenge(challengeTitle, challengeEvidence) ? "Critical" : "Medium";
   const fallbackChallengeBondEstimate = calculateCreationBond({
     entityType: "Challenge",
-    mode: "Underworld",
+    mode: isUnderworldMode ? "Underworld" : "Vanilla",
     creatorTier: "Basic",
-    categoryRisk: "High",
+    categoryRisk: isUnderworldMode ? "High" : "Medium",
     reputation: "New",
     expectedVolumeUsdt: challengeStakeAmount,
+    disputeCount: 0,
+    fraudCount: 0,
+    policy: DEFAULT_BOND_POLICY,
+  });
+  const bountyRewardAmount = parseUsdtInput(bountyReward);
+  const fallbackBountyBondEstimate = calculateCreationBond({
+    entityType: "Bounty",
+    mode: isUnderworldMode ? "Underworld" : "Vanilla",
+    creatorTier: "Basic",
+    categoryRisk: isUnderworldMode ? "High" : "Medium",
+    reputation: "New",
+    expectedVolumeUsdt: bountyRewardAmount,
     disputeCount: 0,
     fraudCount: 0,
     policy: DEFAULT_BOND_POLICY,
@@ -165,14 +218,16 @@ export function App() {
     createCategory,
     fallbackChallengeBondEstimate,
     challengeStakeAmount,
+    fallbackBountyBondEstimate,
+    bountyRewardAmount,
+    isUnderworldMode,
+    approvalMode,
   );
   const bondEstimate = web3.bondEstimate;
   const challengeBondEstimate = web3.challengeBondEstimate;
-  const markets = useMemo(
-    () => import.meta.env.DEV ? mergeMarkets(indexer.markets, sampleMarkets) : indexer.markets,
-    [indexer.markets],
-  );
-  const nowSeconds = Math.floor(Date.now() / 1_000);
+  const bountyBondEstimate = web3.bountyBondEstimate;
+  const markets = indexer.markets;
+  const nowSeconds = useLiveNow();
   const marketViews = useMemo(
     () => markets.map((market) => toMarketViewModel(market, nowSeconds)),
     [markets, nowSeconds],
@@ -189,7 +244,7 @@ export function App() {
     () => calculateSelectedMarketQuote(selectedMarketView?.poolByOutcome, web3.selectedOutcome, quickBetAmount),
     [quickBetAmount, selectedMarketView?.poolByOutcome, web3.selectedOutcome],
   );
-  const visualUnderworldMode = isUnderworldMode || activeTab === "challenges";
+  const visualUnderworldMode = isUnderworldMode;
   const modeClass = visualUnderworldMode ? "underworld" : "vanilla";
   const quickBetAmountLabel = formatUsdt(quickBetAmount);
   const quotePayoutLabel = formatUsdt(quote.userPayout);
@@ -228,6 +283,15 @@ export function App() {
     });
   }
 
+  function dismissIntro() {
+    try {
+      window.localStorage.setItem(ONBOARDING_STORAGE_KEY, "1");
+    } catch {
+      // The guide still closes when storage is unavailable.
+    }
+    setShowIntro(false);
+  }
+
   return (
     <main className={`app-shell ${modeClass}`}>
       <header className="app-header">
@@ -239,6 +303,9 @@ export function App() {
           <button className="mode-switch" onClick={toggleUnderworldMode}>
             {visualUnderworldMode ? <Flame size={16} /> : <Sparkles size={16} />}
             {visualUnderworldMode ? "Underworld" : "Vanilla"}
+          </button>
+          <button className="icon-text-button" onClick={() => setShowIntro(true)}>
+            <CircleHelp size={16} /> Guia rapida
           </button>
           {web3.account.isConnected ? (
             <button className="wallet-button" onClick={() => web3.disconnect()}>
@@ -260,10 +327,12 @@ export function App() {
         </div>
       </header>
 
+      {showIntro && <FirstRunIntro onDismiss={dismissIntro} />}
+
       <section className="status-strip">
         <StatusItem icon={<CheckCircle2 size={17} />} label="Conectar wallet" value="Gratis" />
         <StatusItem icon={<WalletCards size={17} />} label="Saldo" value={web3.balanceLabel} />
-        <StatusItem icon={<ShieldCheck size={17} />} label="Autorizado" value={web3.allowanceLabel} />
+        <StatusItem icon={<ShieldCheck size={17} />} label="Permiso mercados" value={web3.allowanceLabel} />
         <StatusItem icon={<Bell size={17} />} label="Indexer" value={`${indexer.status} / ${indexer.marketCount}`} />
       </section>
 
@@ -311,12 +380,13 @@ export function App() {
           needsApproval={web3.needsBetApproval}
           hasEnoughBalance={web3.hasEnoughBetBalance}
           tx={web3.tx}
+          nowSeconds={nowSeconds}
           onSelectMarket={chooseMarketById}
           onSelectOutcome={web3.setSelectedOutcome}
           onQuickAmount={setQuickBetAmount}
           onToggleHighRoller={() => setHighRollerMode(!highRollerMode)}
           onAddFunds={web3.mintTestTokens}
-          onApprove={web3.approveSettlement}
+          onApprove={web3.approveBetSettlement}
           onBet={web3.placeBet}
         />
       )}
@@ -324,6 +394,8 @@ export function App() {
       {activeTab === "challenges" && (
         <ChallengesView
           title={challengeTitle}
+          nowSeconds={nowSeconds}
+          isUnderworldMode={isUnderworldMode}
           indexedChallenges={indexer.challenges}
           accountAddress={web3.account.address}
           isArbiter={web3.isChallengeArbiter}
@@ -340,8 +412,11 @@ export function App() {
           bondReasons={challengeBondEstimate.reasons}
           moderation={moderation}
           gaslessAvailable={web3.gaslessChallengesAvailable}
+          executionMode={web3.challengeExecutionMode}
           needsApproval={web3.needsChallengeApproval}
           hasEnoughBalance={web3.hasEnoughChallengeBalance}
+          executorNeedsApproval={web3.needsChallengeExecutorApproval}
+          executorHasEnoughBalance={web3.hasEnoughChallengeExecutorBalance}
           tx={web3.tx}
           onTitle={setChallengeTitle}
           onStake={setChallengeStake}
@@ -353,6 +428,7 @@ export function App() {
           onDeadline={setChallengeDeadline}
           onAddFunds={web3.mintTestTokens}
           onApprove={web3.approveChallengeSettlement}
+          onExecutionMode={web3.selectChallengeExecutionMode}
           onApproveExecutor={() => web3.approveChallengeExecutorBond()}
           onApproveDispute={() => web3.approveChallengeDispute({ challengeId: challengeActionId })}
           onCreate={() =>
@@ -399,7 +475,64 @@ export function App() {
               reason: challengeDisputeReason,
             })
           }
+          onResolve={(executorSucceeded) =>
+            web3.resolveChallenge({
+              challengeId: challengeActionId,
+              executorSucceeded,
+              reason: challengeDisputeReason,
+            })
+          }
           onCancel={() => web3.cancelChallenge({ challengeId: challengeActionId, reason: challengeDisputeReason })}
+        />
+      )}
+
+      {activeTab === "bounties" && (
+        <BountiesView
+          bounties={indexer.bounties}
+          isUnderworldMode={isUnderworldMode}
+          nowSeconds={nowSeconds}
+          accountAddress={web3.account.address}
+          title={bountyTitle}
+          description={bountyDescription}
+          reward={bountyReward}
+          rewardAmount={bountyRewardAmount}
+          deadline={bountyDeadline}
+          selectedId={bountyActionId}
+          evidence={bountyEvidence}
+          winner={bountyWinner}
+          reason={bountyReason}
+          bondAmountLabel={formatUsdt(bountyBondEstimate.amount)}
+          totalCostLabel={web3.bountyTotalCostLabel}
+          bondReasons={bountyBondEstimate.reasons}
+          needsApproval={web3.needsBountyApproval}
+          hasEnoughBalance={web3.hasEnoughBountyBalance}
+          isResolver={web3.isBountyResolver}
+          isArbiter={web3.isBountyArbiter}
+          tx={web3.tx}
+          onTitle={setBountyTitle}
+          onDescription={setBountyDescription}
+          onReward={setBountyReward}
+          onDeadline={setBountyDeadline}
+          onSelectedId={setBountyActionId}
+          onEvidence={setBountyEvidence}
+          onWinner={setBountyWinner}
+          onReason={setBountyReason}
+          onAddFunds={web3.mintTestTokens}
+          onApprove={web3.approveBountySettlement}
+          onCreate={() => web3.createBounty({
+            title: bountyTitle,
+            description: bountyDescription,
+            rewardPool: bountyRewardAmount,
+            deadlineMinutes: bountyDeadline,
+          })}
+          onSubmit={() => web3.submitBounty({ bountyId: bountyActionId, evidenceURI: bountyEvidence })}
+          onResolve={() => web3.resolveBounty({
+            bountyId: bountyActionId,
+            winner: isAddress(bountyWinner) ? bountyWinner : undefined,
+            rewardPool: indexer.bounties.find((item) => item.id === bountyActionId)?.rewardEscrow
+              ?? indexer.bounties.find((item) => item.id === bountyActionId)?.rewardPool,
+          })}
+          onCancel={() => web3.cancelBounty({ bountyId: bountyActionId, reason: bountyReason })}
         />
       )}
 
@@ -419,7 +552,7 @@ export function App() {
           onCloses={setClosesInMinutes}
           onResolves={setResolvesInMinutes}
           onAddFunds={web3.mintTestTokens}
-          onApprove={web3.approveSettlement}
+          onApprove={web3.approveMarketCreation}
           onCreate={createMarket}
         />
       )}
@@ -433,11 +566,29 @@ export function App() {
           balanceLabel={web3.balanceLabel}
           gasBalanceLabel={web3.gasBalanceLabel}
           allowanceLabel={web3.allowanceLabel}
+          challengeAllowanceLabel={web3.challengeAllowanceLabel}
+          bountyAllowanceLabel={web3.bountyAllowanceLabel}
+          marketApprovalTargetLabel={web3.marketApprovalTargetLabel}
+          challengeApprovalTargetLabel={web3.challengeApprovalTargetLabel}
+          bountyApprovalTargetLabel={web3.bountyApprovalTargetLabel}
+          approvalMode={approvalMode}
+          marketAllowance={web3.allowance}
+          challengeAllowance={web3.challengeAllowance}
+          bountyAllowance={web3.bountyAllowance}
+          marketPermissionReady={!web3.needsApproval}
+          challengePermissionReady={!web3.needsChallengeApproval}
+          bountyPermissionReady={!web3.needsBountyApproval}
           marketId={web3.marketId}
           tx={web3.tx}
           onMarketId={web3.setMarketId}
           onAddFunds={web3.mintTestTokens}
           onApprove={web3.approveSettlement}
+          onApproveChallenge={web3.approveChallengeSettlement}
+          onApproveBounty={web3.approveBountySettlement}
+          onApprovalMode={setApprovalMode}
+          onRevokeMarket={web3.revokeMarketApproval}
+          onRevokeChallenge={web3.revokeChallengeApproval}
+          onRevokeBounty={web3.revokeBountyApproval}
           onClaim={web3.claimReward}
           onRefund={web3.claimRefund}
           onSignXmr={web3.signXmrConversionAuthorization}
@@ -481,6 +632,7 @@ function MarketsView({
   needsApproval,
   hasEnoughBalance,
   tx,
+  nowSeconds,
   onSelectMarket,
   onSelectOutcome,
   onQuickAmount,
@@ -506,6 +658,7 @@ function MarketsView({
   needsApproval: boolean;
   hasEnoughBalance: boolean;
   tx: { status: string; label: string; hash?: string; error?: string };
+  nowSeconds: number;
   onSelectMarket: (marketId: string) => void;
   onSelectOutcome: (outcome: 0 | 1) => void;
   onQuickAmount: (amount: bigint) => void;
@@ -547,6 +700,14 @@ function MarketsView({
                 <small>ID #{market.id}</small>
                 <small>Pool {formatUsdt((market.poolByOutcome[0] ?? 0n) + (market.poolByOutcome[1] ?? 0n))} aUSDT</small>
               </div>
+              {market.countdownLabel && (
+                <time
+                  className={`lifecycle-countdown ${market.countdownUrgency ?? "normal"}`}
+                  dateTime={market.countdownTarget}
+                >
+                  {market.countdownLabel}
+                </time>
+              )}
             </div>
             <div className="market-odds">
               <strong>SI {market.yesOdds}%</strong>
@@ -617,7 +778,7 @@ function MarketsView({
           totalPool={quoteTotalPoolLabel}
           />
           <StepLine done={hasEnoughBalance} label="Tienes aUSDT suficiente para esta prediccion" action="Recibir aUSDT testnet" onAction={onAddFunds} />
-          <StepLine done={!needsApproval} label="Alterford esta autorizado para esta prediccion" action="Autorizar aUSDT" onAction={onApprove} />
+          <StepLine done={!needsApproval} label="Permiso disponible para esta prediccion" action="Autorizar una vez" onAction={onApprove} />
           <button className="primary-action" onClick={onBet} disabled={!hasEnoughBalance || needsApproval}>
           Confirmar prediccion <ChevronRight size={16} />
           </button>
@@ -705,6 +866,8 @@ function LiveProofPreview({ liveUrl, evidenceUrl }: { liveUrl: string; evidenceU
 
 function ChallengesView({
   title,
+  nowSeconds,
+  isUnderworldMode,
   indexedChallenges,
   accountAddress,
   isArbiter,
@@ -721,8 +884,11 @@ function ChallengesView({
   bondReasons,
   moderation,
   gaslessAvailable,
+  executionMode,
   needsApproval,
   hasEnoughBalance,
+  executorNeedsApproval,
+  executorHasEnoughBalance,
   tx,
   onTitle,
   onStake,
@@ -734,6 +900,7 @@ function ChallengesView({
   onDeadline,
   onAddFunds,
   onApprove,
+  onExecutionMode,
   onApproveExecutor,
   onApproveDispute,
   onCreate,
@@ -745,9 +912,12 @@ function ChallengesView({
   onDispute,
   onFinalize,
   onResolveDispute,
+  onResolve,
   onCancel,
 }: {
   title: string;
+  nowSeconds: number;
+  isUnderworldMode: boolean;
   indexedChallenges: ChallengeDTO[];
   accountAddress?: string;
   isArbiter: boolean;
@@ -764,8 +934,11 @@ function ChallengesView({
   bondReasons: readonly string[];
   moderation: { allowed: boolean; level: string; message: string };
   gaslessAvailable: boolean;
+  executionMode: ChallengeExecutionMode;
   needsApproval: boolean;
   hasEnoughBalance: boolean;
+  executorNeedsApproval: boolean;
+  executorHasEnoughBalance: boolean;
   tx: { status: string; label: string; hash?: string; error?: string };
   onTitle: (value: string) => void;
   onStake: (value: string) => void;
@@ -777,6 +950,7 @@ function ChallengesView({
   onDeadline: (value: number) => void;
   onAddFunds: () => void;
   onApprove: () => void;
+  onExecutionMode: (mode: ChallengeExecutionMode) => void;
   onApproveExecutor: () => void;
   onApproveDispute: () => void;
   onCreate: () => void;
@@ -788,11 +962,25 @@ function ChallengesView({
   onDispute: () => void;
   onFinalize: () => void;
   onResolveDispute: (executorSucceeded: boolean) => void;
+  onResolve: (executorSucceeded: boolean) => void;
   onCancel: () => void;
 }) {
-  const nowSeconds = Math.floor(Date.now() / 1_000);
-  const partitions = partitionChallenges(indexedChallenges, nowSeconds);
-  const selectedChallenge = indexedChallenges.find((challenge) => challenge.id === actionId);
+  const [workflowView, setWorkflowView] = useState<"explore" | "mine" | "create">("explore");
+  const modeChallenges = filterChallengesByMode(indexedChallenges, isUnderworldMode);
+  const normalizedViewer = accountAddress?.toLowerCase();
+  const myChallenges = modeChallenges.filter((challenge) =>
+    Boolean(
+      normalizedViewer
+        && (challenge.creator.toLowerCase() === normalizedViewer
+          || challenge.executor?.toLowerCase() === normalizedViewer),
+    ) || (isArbiter && challenge.state === "Disputed"),
+  );
+  const exploredChallenges = modeChallenges.filter(
+    (challenge) => challenge.creator.toLowerCase() !== normalizedViewer,
+  );
+  const visibleChallenges = workflowView === "mine" ? myChallenges : exploredChallenges;
+  const partitions = partitionChallenges(visibleChallenges, nowSeconds);
+  const selectedChallenge = modeChallenges.find((challenge) => challenge.id === actionId);
   const selectedLifecycle = selectedChallenge
     ? challengeAvailability(selectedChallenge, nowSeconds)
     : undefined;
@@ -804,30 +992,66 @@ function ChallengesView({
     selectedChallenge?.executor && normalizedAccount && selectedChallenge.executor.toLowerCase() === normalizedAccount,
   );
   const isParticipant = isCreator || isExecutor;
+  const rawDeadline = Number(selectedChallenge?.deadline);
+  const beforeDeadline = !Number.isFinite(rawDeadline) || nowSeconds <= rawDeadline;
   const canAccept = Boolean(
     selectedChallenge && selectedChallenge.state === "Open" && selectedLifecycle?.group === "active" && !isCreator,
   );
   const canUpdateLive = Boolean(
-    selectedChallenge && isParticipant && ["Accepted", "EvidenceSubmitted"].includes(selectedChallenge.state),
+    selectedChallenge && beforeDeadline && isParticipant && ["Accepted", "EvidenceSubmitted"].includes(selectedChallenge.state),
   );
-  const canSubmitEvidence = Boolean(selectedChallenge && isExecutor && selectedChallenge.state === "Accepted");
+  const canSubmitEvidence = Boolean(
+    selectedChallenge && beforeDeadline && isExecutor && selectedChallenge.state === "Accepted",
+  );
   const canPropose = Boolean(
     selectedChallenge && isParticipant && selectedChallenge.state === "EvidenceSubmitted",
   );
-  const canReview = Boolean(selectedChallenge && isParticipant && selectedChallenge.state === "Review");
-  const canFinalize = Boolean(selectedChallenge && selectedChallenge.state === "Review");
+  const canReview = Boolean(
+    selectedChallenge
+      && isParticipant
+      && selectedChallenge.state === "Review"
+      && selectedChallenge.resolutionProposal?.proposer.toLowerCase() !== normalizedAccount,
+  );
+  const proposalDeadline = Number(selectedChallenge?.resolutionProposal?.disputeDeadline);
+  const canFinalize = Boolean(
+    selectedChallenge
+      && selectedChallenge.state === "Review"
+      && Number.isFinite(proposalDeadline)
+      && nowSeconds > proposalDeadline,
+  );
   const canArbitrate = Boolean(selectedChallenge && isArbiter && selectedChallenge.state === "Disputed");
+  const canOperatorResolve = Boolean(
+    selectedChallenge
+      && isArbiter
+      && ["Accepted", "EvidenceSubmitted", "Review"].includes(selectedChallenge.state),
+  );
   const canCancelExpired = Boolean(
     selectedChallenge && isArbiter && selectedChallenge.state === "Open" && selectedLifecycle?.group === "history",
   );
+  const maxDeadlineMinutes = Number(stake) >= 1000 ? 2_880 : 1_440;
+  const challengeEndLabel = new Date((nowSeconds + deadline * 60) * 1_000).toLocaleString("es-BO");
+  const workflow = selectedChallenge
+    ? challengeWorkflow(selectedChallenge, accountAddress as Address | undefined, isArbiter, nowSeconds)
+    : undefined;
 
   return (
-    <section className="challenge-layout">
-      <div className="challenge-feed">
+    <section className="workflow-page">
+      <WorkflowNavigation
+        ariaLabel="Vistas de retos"
+        value={workflowView}
+        items={[
+          { id: "explore", label: "Explorar retos", description: "Retos disponibles" },
+          { id: "mine", label: "Mis retos", description: "Tu actividad" },
+          { id: "create", label: "Crear reto", description: "Publicar recompensa" },
+        ]}
+        onChange={(value) => setWorkflowView(value as typeof workflowView)}
+      />
+      <section className="challenge-layout">
+      <div className="challenge-feed" hidden={workflowView === "create"}>
         <div className="section-title">
           <div>
-            <p className="eyebrow">Retos Underworld</p>
-            <h2>Provocacion monetizada, pero con reglas verificables.</h2>
+            <p className="eyebrow">{workflowView === "mine" ? "Tu actividad" : isUnderworldMode ? "Retos Underworld" : "Retos Vanilla"}</p>
+            <h2>{workflowView === "mine" ? "Continua exactamente desde el paso pendiente." : "Elige un reto y revisa sus condiciones antes de participar."}</h2>
           </div>
           <span>Live-ready</span>
         </div>
@@ -840,8 +1064,8 @@ function ChallengesView({
           ))}
         </div>
         <ChallengeSection
-          title="Retos activos"
-          empty="No hay retos disponibles para aceptar."
+          title={workflowView === "mine" ? "Tus retos activos" : "Disponibles para aceptar"}
+          empty={workflowView === "mine" ? "No tienes retos activos con esta cuenta." : "No hay retos disponibles para aceptar."}
           challenges={partitions.active}
           selectedId={actionId}
           nowSeconds={nowSeconds}
@@ -866,58 +1090,65 @@ function ChallengesView({
             onSelect={onActionId}
           />
         </details>
-        <div className="section-title compact template-heading">
-          <div>
-            <p className="eyebrow">Inspiracion</p>
-            <h3>Ejemplos, no retos activos</h3>
-          </div>
-        </div>
-        <div className="challenge-cards template-cards">
-          {challengeTemplates.map((challenge) => (
-            <article className={challenge.status === "No permitido" ? "challenge-card blocked" : "challenge-card"} key={challenge.title}>
-              <div className="challenge-card-top">
-                <Flame size={18} />
-                <strong>{challenge.risk}</strong>
-              </div>
-              <h3>{challenge.title}</h3>
-              <p>{challenge.evidence}</p>
-              <div className="challenge-meta">
-                <span>{challenge.reward}</span>
-                <span>{challenge.status}</span>
-              </div>
-            </article>
-          ))}
-        </div>
       </div>
 
       <aside className="challenge-builder">
+        {workflowView === "create" && <>
         <p className="eyebrow">Crear reto protegido</p>
         <h2>Define el reto antes de bloquear fondos.</h2>
-        <p className="help-text">Crear un reto bloquea recompensa + bond. Aceptarlo exige otra wallet: el creador no puede aceptar su propio reto.</p>
-        {gaslessAvailable && (
-          <div className="step-line done">
-            <Zap size={17} />
-            <span>Gas patrocinado: las acciones core del reto requieren firma, pero Alterford paga el gas.</span>
+        <div className="role-notice">
+          <UserRound size={18} />
+          <div>
+            <strong>La wallet conectada sera el creador</strong>
+            <span>Otra wallet debe aceptar el reto y bloquear exclusivamente su bond de ejecutor.</span>
           </div>
-        )}
+        </div>
+        <div className="execution-mode" aria-label="Modo de envio del reto">
+          <button
+            className={executionMode === "wallet" ? "selected" : ""}
+            aria-pressed={executionMode === "wallet"}
+            onClick={() => onExecutionMode("wallet")}
+          >
+            <WalletCards size={16} /> Wallet
+          </button>
+          <button
+            className={executionMode === "gasless" ? "selected" : ""}
+            aria-pressed={executionMode === "gasless"}
+            onClick={() => onExecutionMode("gasless")}
+            disabled={!gaslessAvailable}
+          >
+            <Zap size={16} /> Sin gas
+          </button>
+        </div>
+        <p className="help-text">
+          {executionMode === "gasless"
+            ? "Firmaras una autorizacion EIP-712. Si el relay falla, no se moveran fondos y Alterford ofrecera el siguiente intento con Wallet."
+            : gaslessAvailable
+              ? "Ruta Wallet lista. Es la opcion mas fiable; usa una pequena cantidad de ETH de Base Sepolia para gas. Sin gas queda disponible como alternativa."
+              : "Ruta Wallet lista. Usa una pequena cantidad de ETH de Base Sepolia de prueba; el patrocinio no esta confirmado ahora."}
+        </p>
+        <div className="builder-stage"><strong>1. Define que debe ocurrir</strong><span>Escribe una regla concreta y una prueba que cualquier persona pueda revisar.</span></div>
         <label>
           Reto
           <textarea value={title} onChange={(event) => onTitle(event.target.value)} />
         </label>
         <div className="form-grid">
           <label>
-            Valor declarado
+            Recompensa del reto (aUSDT)
             <input value={stake} onChange={(event) => onStake(event.target.value)} />
           </label>
           <label>
-            Deadline en minutos
-            <input
-              type="number"
-              min={30}
-              max={Number(stake) >= 1000 ? 2880 : 1440}
+            Tiempo disponible
+            <select
               value={deadline}
               onChange={(event) => onDeadline(Number(event.target.value))}
-            />
+            >
+              <option value={720}>12 horas</option>
+              <option value={1_080}>18 horas</option>
+              <option value={1_440}>24 horas</option>
+              {maxDeadlineMinutes === 2_880 && <option value={2_880}>48 horas (alto valor)</option>}
+            </select>
+            <small>Finaliza aproximadamente: {challengeEndLabel}</small>
           </label>
         </div>
         <label>
@@ -943,8 +1174,10 @@ function ChallengesView({
         </div>
 
         <div className="escrow-ladder">
+          <div className="builder-stage"><strong>2. Revisa el dinero protegido</strong><span>Este es el importe exacto que se bloqueara en el contrato.</span></div>
           <StepLine done={hasEnoughBalance} label={`Total a bloquear al crear: ${totalRequiredLabel} aUSDT`} action="Recibir aUSDT testnet" onAction={onAddFunds} />
-          <StepLine done={!needsApproval} label="ChallengeFactory autorizado solo por recompensa + bond" action="Autorizar retos" onAction={onApprove} />
+          <div className="builder-stage"><strong>3. Prepara el permiso</strong><span>Autorizar no mueve aUSDT. Con el modo recomendado, el permiso restante sirve para proximos retos.</span></div>
+          <StepLine done={!needsApproval} label="Permiso disponible para recompensa + bond" action="Autorizar una vez" onAction={onApprove} />
           <div className="step-line pending">
             <LockKeyhole size={17} />
             <span>Recompensa escrowed: {stakeLabel} aUSDT. Bond creador: {bondAmountLabel} aUSDT.</span>
@@ -968,12 +1201,14 @@ function ChallengesView({
         <button
           className="primary-action danger-action"
           onClick={onCreate}
-          disabled={!moderation.allowed || !hasEnoughBalance || needsApproval}
+          disabled={!moderation.allowed || !hasEnoughBalance || needsApproval || tx.status === "pending"}
         >
-          Crear reto Underworld <ChevronRight size={16} />
+          4. Crear reto {executionMode === "gasless" ? "sin gas" : "con Wallet"} <ChevronRight size={16} />
         </button>
+        <p className="help-text">Este ultimo paso si bloquea {totalRequiredLabel} aUSDT en escrow. No existe otro cobro oculto.</p>
+        </>}
 
-        <div className="challenge-actions">
+        {workflowView !== "create" && <div className="challenge-actions guided-detail">
           <div className="section-title compact">
             <div>
               <p className="eyebrow">Reto seleccionado</p>
@@ -989,6 +1224,14 @@ function ChallengesView({
             <strong>{selectedChallenge.title || `Reto #${selectedChallenge.id}`}</strong>
             <span>Estado on-chain: {selectedChallenge.state}. Tu rol: {isArbiter ? "arbitro" : isCreator ? "creador" : isExecutor ? "ejecutor" : "observador"}.</span>
           </div>}
+          {workflow && <>
+            <LifecycleProgress steps={workflow.steps} />
+            <div className="next-action-callout">
+              <span>Tu siguiente paso</span>
+              <strong>{workflow.headline}</strong>
+              <p>{workflow.instruction}</p>
+            </div>
+          </>}
           {selectedChallenge && (canSubmitEvidence || canPropose || canReview || canArbitrate) && <div className="form-grid">
             <label>
               Evidencia final
@@ -999,9 +1242,13 @@ function ChallengesView({
               />
             </label>
           </div>}
-          {canAccept && <div className="action-grid guided-actions">
-            <button onClick={onApproveExecutor}>1. Autorizar bond ejecutor</button>
-            <button onClick={onAccept}>2. Aceptar reto</button>
+          {canAccept && <div className="guided-transaction">
+            <strong>Aceptar este reto</strong>
+            <span>El ejecutor bloquea {bondAmountLabel} aUSDT como garantia; no paga la recompensa.</span>
+            {!executorHasEnoughBalance && <button onClick={onAddFunds}>Recibir aUSDT testnet</button>}
+            {executorNeedsApproval
+              ? <button onClick={onApproveExecutor}>1. Autorizar una vez el bond de {bondAmountLabel} aUSDT</button>
+              : <button className="primary-action" onClick={onAccept}>2. Aceptar y bloquear bond</button>}
           </div>}
           {canUpdateLive && <div className="action-grid guided-actions">
             <button onClick={onUpdateLive} disabled={!liveUrl.trim()}>Publicar o actualizar live</button>
@@ -1047,10 +1294,65 @@ function ChallengesView({
             <span>Como arbitro puedes cancelarlo para devolver los fondos escrowed al creador.</span>
             <button onClick={onCancel}>Cancelar y habilitar reembolso</button>
           </div>}
-        </div>
+          {canOperatorResolve && <div className="operator-warning">
+            <strong>Resolucion anticipada del arbitro</strong>
+            <span>Usa esta accion cuando la evidencia ya permite cerrar sin esperar mas. La decision distribuye o devuelve el escrow y no se puede deshacer.</span>
+            <input
+              value={disputeReason}
+              onChange={(event) => onDisputeReason(event.target.value)}
+              placeholder="Motivo y referencia de evidencia"
+            />
+            <div className="action-grid">
+              <button onClick={() => onResolve(true)} disabled={!disputeReason.trim()}>Resolver: cumplido</button>
+              <button onClick={() => onResolve(false)} disabled={!disputeReason.trim()}>Resolver: no cumplido</button>
+            </div>
+          </div>}
+        </div>}
         <TxState tx={tx} />
       </aside>
+      </section>
     </section>
+  );
+}
+
+function WorkflowNavigation({
+  ariaLabel,
+  value,
+  items,
+  onChange,
+}: {
+  ariaLabel: string;
+  value: string;
+  items: readonly { id: string; label: string; description: string }[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <nav className="workflow-navigation" aria-label={ariaLabel}>
+      {items.map((item) => (
+        <button
+          key={item.id}
+          className={value === item.id ? "active" : ""}
+          aria-pressed={value === item.id}
+          onClick={() => onChange(item.id)}
+        >
+          <strong>{item.label}</strong>
+          <span>{item.description}</span>
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+function LifecycleProgress({ steps }: { steps: readonly { label: string; state: string }[] }) {
+  return (
+    <ol className="workflow-progress" aria-label="Progreso del proceso">
+      {steps.map((step, index) => (
+        <li className={step.state} key={step.label} aria-current={step.state === "current" ? "step" : undefined}>
+          <strong>{step.state === "complete" ? <CheckCircle2 size={16} /> : index + 1}</strong>
+          <span>{step.label}</span>
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -1078,6 +1380,7 @@ function ChallengeSection({
       {challenges.length === 0 ? <p className="empty-inline">{empty}</p> : <div className="challenge-cards">
         {challenges.map((challenge) => {
           const availability = challengeAvailability(challenge, nowSeconds);
+          const countdown = challengeCountdown(challenge, nowSeconds);
           return (
             <article className={selectedId === challenge.id ? "challenge-card live-card selected" : "challenge-card live-card"} key={challenge.id}>
               <div className="challenge-card-top">
@@ -1090,6 +1393,11 @@ function ChallengeSection({
                 <span>{formatUsdt(toBigIntAmount(challenge.rewardPool))} aUSDT</span>
                 <span>ID #{challenge.id}</span>
               </div>
+              {countdown && (
+                <time className={`lifecycle-countdown ${countdown.urgency}`} dateTime={countdown.target}>
+                  {countdown.label}
+                </time>
+              )}
               {challenge.liveStreamURI ? (
                 <a className="live-link" href={challenge.liveStreamURI} target="_blank" rel="noreferrer">Ver live proof</a>
               ) : (
@@ -1123,6 +1431,12 @@ function challengeActionGuidance(
       : "Para participar: autoriza el bond y luego acepta el reto. Autorizar no mueve fondos; aceptar si los bloquea.";
   }
   if (challenge.state === "Accepted") {
+    const deadline = Number(challenge.deadline);
+    if (Number.isFinite(deadline) && nowSeconds > deadline) {
+      return roles.isArbiter
+        ? "El plazo de evidencia termino. Revisa lo disponible y resuelve como arbitro."
+        : "El plazo de evidencia termino. Espera la resolucion del arbitro; no necesitas enviar otra transaccion.";
+    }
     return roles.isExecutor
       ? "Publica el live si corresponde y envia la evidencia final al terminar."
       : "El ejecutor debe publicar la evidencia; puedes seguir el live mientras tanto.";
@@ -1135,6 +1449,397 @@ function challengeActionGuidance(
       : "Existe una disputa. Solo el arbitro autorizado puede emitir la decision final on-chain.";
   }
   return "No hay acciones disponibles para esta cuenta en el estado actual.";
+}
+
+function BountiesView({
+  bounties,
+  isUnderworldMode,
+  nowSeconds,
+  accountAddress,
+  title,
+  description,
+  reward,
+  rewardAmount,
+  deadline,
+  selectedId,
+  evidence,
+  winner,
+  reason,
+  bondAmountLabel,
+  totalCostLabel,
+  bondReasons,
+  needsApproval,
+  hasEnoughBalance,
+  isResolver,
+  isArbiter,
+  tx,
+  onTitle,
+  onDescription,
+  onReward,
+  onDeadline,
+  onSelectedId,
+  onEvidence,
+  onWinner,
+  onReason,
+  onAddFunds,
+  onApprove,
+  onCreate,
+  onSubmit,
+  onResolve,
+  onCancel,
+}: {
+  bounties: BountyDTO[];
+  isUnderworldMode: boolean;
+  nowSeconds: number;
+  accountAddress?: string;
+  title: string;
+  description: string;
+  reward: string;
+  rewardAmount: bigint;
+  deadline: number;
+  selectedId: string;
+  evidence: string;
+  winner: string;
+  reason: string;
+  bondAmountLabel: string;
+  totalCostLabel: string;
+  bondReasons: readonly string[];
+  needsApproval: boolean;
+  hasEnoughBalance: boolean;
+  isResolver: boolean;
+  isArbiter: boolean;
+  tx: { status: string; label: string; hash?: string; error?: string };
+  onTitle: (value: string) => void;
+  onDescription: (value: string) => void;
+  onReward: (value: string) => void;
+  onDeadline: (value: number) => void;
+  onSelectedId: (value: string) => void;
+  onEvidence: (value: string) => void;
+  onWinner: (value: string) => void;
+  onReason: (value: string) => void;
+  onAddFunds: () => void;
+  onApprove: () => void;
+  onCreate: () => void;
+  onSubmit: () => void;
+  onResolve: () => void;
+  onCancel: () => void;
+}) {
+  const [workflowView, setWorkflowView] = useState<"explore" | "mine" | "create">("explore");
+  const [evidenceFile, setEvidenceFile] = useState<File>();
+  const [evidenceUploadState, setEvidenceUploadState] = useState<"idle" | "uploading" | "uploaded" | "failed">("idle");
+  const [evidenceUploadError, setEvidenceUploadError] = useState("");
+  const modeBounties = filterBountiesByMode(bounties, isUnderworldMode);
+  const normalizedViewer = accountAddress?.toLowerCase();
+  const myBounties = modeBounties.filter((bounty) =>
+    bounty.creator.toLowerCase() === normalizedViewer
+      || bounty.submissions?.some((submission) => submission.submitter.toLowerCase() === normalizedViewer),
+  );
+  const visibleBounties = workflowView === "mine" ? myBounties : modeBounties;
+  const isOpen = (bounty: BountyDTO) => {
+    const deadlineSeconds = Number(bounty.deadline);
+    return bounty.state === "Open" && (!Number.isFinite(deadlineSeconds) || deadlineSeconds > nowSeconds);
+  };
+  const activeBounties = visibleBounties.filter(isOpen);
+  const resolutionBounties = visibleBounties.filter((bounty) => bounty.state === "Open" && !isOpen(bounty));
+  const historyBounties = visibleBounties.filter((bounty) => bounty.state !== "Open");
+  const selected = modeBounties.find((bounty) => bounty.id === selectedId);
+  const selectedOpen = Boolean(selected && isOpen(selected));
+  const selectedAwaitingResolution = Boolean(
+    selected && selected.state === "Open" && !isOpen(selected),
+  );
+  const isCreator = Boolean(
+    selected && accountAddress && selected.creator.toLowerCase() === accountAddress.toLowerCase(),
+  );
+  const endLabel = new Date((nowSeconds + deadline * 60) * 1_000).toLocaleString("es-BO");
+  const workflow = selected
+    ? bountyWorkflow(selected, accountAddress as Address | undefined, isResolver, isArbiter, nowSeconds)
+    : undefined;
+  const canSubmitEvidence = Boolean(
+    selectedOpen
+      && !isCreator
+      && (workflow?.primaryAction === "submit-evidence" || workflow?.primaryAction === "update-evidence"),
+  );
+  const selectBounty = (id: string) => {
+    onSelectedId(id);
+    onEvidence("");
+    onWinner("");
+    setEvidenceFile(undefined);
+    setEvidenceUploadState("idle");
+    setEvidenceUploadError("");
+  };
+  const chooseEvidenceFile = (file?: File) => {
+    setEvidenceUploadError("");
+    setEvidenceUploadState("idle");
+    setEvidenceFile(undefined);
+    if (!file) return;
+    try {
+      validateEvidenceImage(file);
+      setEvidenceFile(file);
+    } catch (error) {
+      setEvidenceUploadState("failed");
+      setEvidenceUploadError(error instanceof Error ? error.message : "La imagen no es valida.");
+    }
+  };
+  const uploadEvidence = async () => {
+    if (!evidenceFile) return;
+    const gatewayUrl = import.meta.env.VITE_GATEWAY_URL;
+    if (!gatewayUrl) {
+      setEvidenceUploadState("failed");
+      setEvidenceUploadError("La subida de fotos no esta configurada. Puedes pegar un enlace IPFS verificable.");
+      return;
+    }
+    setEvidenceUploadState("uploading");
+    setEvidenceUploadError("");
+    try {
+      const client = new AlterfordGatewayClient(gatewayUrl);
+      const config = await client.config();
+      if (!config.evidenceUploads?.enabled) throw new Error("La subida de fotos no esta disponible ahora.");
+      validateEvidenceImage(evidenceFile, config.evidenceUploads);
+      const result = await client.uploadEvidenceImage({
+        fileName: evidenceFile.name,
+        mimeType: evidenceFile.type,
+        bytesBase64: await evidenceFileToBase64(evidenceFile),
+      });
+      onEvidence(result.uri);
+      setEvidenceUploadState("uploaded");
+    } catch (error) {
+      setEvidenceUploadState("failed");
+      setEvidenceUploadError(error instanceof Error ? error.message : "No se pudo subir la foto.");
+    }
+  };
+
+  return (
+    <section className="workflow-page">
+      <WorkflowNavigation
+        ariaLabel="Vistas de bounties"
+        value={workflowView}
+        items={[
+          { id: "explore", label: "Explorar bounties", description: isUnderworldMode ? "Solo Underworld" : "Solo Vanilla" },
+          { id: "mine", label: "Mis entregas", description: "Tus bounties y pruebas" },
+          { id: "create", label: "Crear bounty", description: "Publicar recompensa" },
+        ]}
+        onChange={(value) => setWorkflowView(value as typeof workflowView)}
+      />
+      <section className="challenge-layout bounty-layout">
+      <div className="challenge-feed" hidden={workflowView === "create"}>
+        <div className="section-title">
+          <div>
+            <p className="eyebrow">{isUnderworldMode ? "Bounty World / Underworld" : "Bounties Vanilla"}</p>
+            <h2>{workflowView === "mine" ? "Continua tus entregas y revisa resultados." : "Completa una tarea y compite por una recompensa protegida."}</h2>
+          </div>
+          <span>{activeBounties.length} activos</span>
+        </div>
+        {activeBounties.length === 0 && <p className="empty-inline">No hay bounties abiertos ahora.</p>}
+        <div className="challenge-cards">
+          {activeBounties.map((bounty) => <BountyCard
+            key={bounty.id}
+            bounty={bounty}
+            nowSeconds={nowSeconds}
+            selected={selectedId === bounty.id}
+            onSelect={selectBounty}
+          />)}
+        </div>
+        <div className="section-title compact template-heading">
+          <div><p className="eyebrow">Cierre</p><h3>Esperando resolucion ({resolutionBounties.length})</h3></div>
+        </div>
+        {resolutionBounties.length === 0 && <p className="empty-inline">No hay bounties pendientes de resolución.</p>}
+        <div className="challenge-cards">
+          {resolutionBounties.map((bounty) => <BountyCard
+            key={bounty.id}
+            bounty={bounty}
+            nowSeconds={nowSeconds}
+            selected={selectedId === bounty.id}
+            onSelect={selectBounty}
+          />)}
+        </div>
+        <details className="history-panel">
+          <summary>Historial ({historyBounties.length})</summary>
+          <div className="challenge-cards">
+            {historyBounties.map((bounty) => <BountyCard
+              key={bounty.id}
+              bounty={bounty}
+              nowSeconds={nowSeconds}
+              selected={selectedId === bounty.id}
+              onSelect={selectBounty}
+            />)}
+          </div>
+        </details>
+      </div>
+
+      <aside className="challenge-builder">
+        {workflowView === "create" && <>
+        <p className="eyebrow">Crear bounty protegido</p>
+        <h2>La recompensa se paga solo desde el escrow depositado.</h2>
+        <label>
+          Titulo del bounty
+          <input value={title} onChange={(event) => onTitle(event.target.value)} />
+        </label>
+        <label>
+          Entrega requerida
+          <textarea value={description} onChange={(event) => onDescription(event.target.value)} />
+        </label>
+        <div className="form-grid">
+          <label>
+            Recompensa (aUSDT)
+            <input value={reward} onChange={(event) => onReward(event.target.value)} />
+          </label>
+          <label>
+            Tiempo para entregar
+            <select value={deadline} onChange={(event) => onDeadline(Number(event.target.value))}>
+              <option value={720}>12 horas</option>
+              <option value={1_440}>24 horas</option>
+              <option value={2_880}>48 horas</option>
+            </select>
+            <small>Cierra aproximadamente: {endLabel}</small>
+          </label>
+        </div>
+        <div className="escrow-ladder">
+          <StepLine done={hasEnoughBalance} label={`Total a bloquear: ${totalCostLabel}`} action="Recibir aUSDT testnet" onAction={onAddFunds} />
+          <StepLine done={!needsApproval} label="Permiso disponible para recompensa + bond" action="Autorizar una vez" onAction={onApprove} />
+          <div className="step-line pending"><LockKeyhole size={17} /><span>Recompensa: {formatUsdt(rewardAmount)} aUSDT. Bond creador: {bondAmountLabel} aUSDT.</span></div>
+        </div>
+        <div className="tag-row">
+          {bondReasons.map((item) => <span className="tag" key={item}>{item}</span>)}
+        </div>
+        <button
+          className="primary-action"
+          onClick={onCreate}
+          disabled={!title.trim() || !description.trim() || rewardAmount <= 0n || needsApproval || !hasEnoughBalance || tx.status === "pending"}
+        >
+          Crear y bloquear recompensa <ChevronRight size={16} />
+        </button>
+        <p className="help-text">Este paso bloquea recompensa + bond. Los participantes no apuestan contra ti: compiten enviando una entrega.</p>
+        </>}
+
+        {workflowView !== "create" && <div className="challenge-actions guided-detail">
+          <div className="section-title compact">
+            <div>
+              <p className="eyebrow">Bounty seleccionado</p>
+              <h3>{selected ? `#${selected.id} · ${selected.state}` : "Selecciona un bounty"}</h3>
+            </div>
+          </div>
+          {selected && <div className="selected-entity-summary">
+            <strong>{selected.title}</strong>
+            <span>{isCreator ? "Eres el creador." : "Puedes enviar una entrega verificable mientras siga abierto."}</span>
+          </div>}
+          {workflow && <>
+            <LifecycleProgress steps={workflow.steps} />
+            <div className="next-action-callout">
+              <span>Tu siguiente paso</span>
+              <strong>{workflow.headline}</strong>
+              <p>{workflow.instruction}</p>
+            </div>
+          </>}
+          {canSubmitEvidence && <div className="evidence-uploader">
+            <div className="builder-stage">
+              <strong>1. Añade una prueba</strong>
+              <span>Sube una foto o usa un enlace verificable. Elegir el archivo todavia no envia una transaccion.</span>
+            </div>
+            <label className="evidence-file-field">
+              <ImagePlus size={18} /> Foto de evidencia
+              <input
+                type="file"
+                accept={DEFAULT_EVIDENCE_UPLOAD_POLICY.mimeTypes.join(",")}
+                onChange={(event) => chooseEvidenceFile(event.target.files?.[0])}
+              />
+            </label>
+            {evidenceFile && <div className="selected-file">
+              <span>{evidenceFile.name} · {(evidenceFile.size / 1024 / 1024).toFixed(2)} MiB</span>
+              <button onClick={uploadEvidence} disabled={evidenceUploadState === "uploading"}>
+                <UploadCloud size={16} /> {evidenceUploadState === "uploading" ? "Subiendo..." : "Subir foto a IPFS"}
+              </button>
+            </div>}
+            <label>
+              O pega un enlace de evidencia
+              <input
+                value={evidence}
+                onChange={(event) => {
+                  onEvidence(event.target.value);
+                  setEvidenceUploadState("idle");
+                }}
+                placeholder="ipfs://... o https://..."
+              />
+            </label>
+            {evidenceUploadState === "uploaded" && <p className="upload-success">Foto publicada. Ahora registra la entrega on-chain.</p>}
+            {evidenceUploadError && <p className="upload-error" role="alert">{evidenceUploadError}</p>}
+            <div className="builder-stage">
+              <strong>2. Registra tu entrega</strong>
+              <span>Este paso abre la wallet y guarda el hash y la URI de la prueba en el contrato.</span>
+            </div>
+            <button className="primary-action" onClick={onSubmit} disabled={!evidence.trim() || tx.status === "pending" || evidenceUploadState === "uploading"}>
+              {workflow?.primaryAction === "update-evidence" ? "Actualizar entrega on-chain" : "Enviar entrega on-chain"}
+            </button>
+          </div>}
+          {selected?.submissions && selected.submissions.length > 0 && <div className="submission-list">
+            <strong>Entregas registradas ({selected.submissions.length})</strong>
+            {selected.submissions.map((submission) => <div key={submission.submitter}>
+              <span>{shortAddress(submission.submitter)}</span>
+              {submission.evidenceURI
+                ? <a href={evidenceHttpUrl(submission.evidenceURI)} target="_blank" rel="noreferrer">Ver evidencia</a>
+                : <span>Hash on-chain registrado</span>}
+            </div>)}
+          </div>}
+          {selected && !isResolver && !isArbiter && (
+            <p className="help-text">{selectedAwaitingResolution
+              ? "Esperando resolución del operador. El escrow permanece protegido y no necesitas enviar otra transacción."
+              : "Después del cierre, el operador revisa las entregas y publica el ganador. El pago sale automáticamente del escrow."}</p>
+          )}
+          {selectedAwaitingResolution && isResolver && <div className="operator-warning">
+            <strong>Resolución del bounty</strong>
+            <span>La dirección ganadora debe haber enviado previamente una entrega on-chain. Se pagará todo el escrow disponible.</span>
+            <label>
+              Entrega ganadora
+              <select value={winner} onChange={(event) => onWinner(event.target.value)}>
+                <option value="">Selecciona una entrega</option>
+                {selected?.submissions?.map((submission) => (
+                  <option key={submission.submitter} value={submission.submitter}>{shortAddress(submission.submitter)}</option>
+                ))}
+              </select>
+            </label>
+            <button onClick={onResolve} disabled={!isAddress(winner) || tx.status === "pending"}>Resolver bounty y pagar</button>
+          </div>}
+          {selected && selected.state === "Open" && isArbiter && <div className="operator-warning">
+            <strong>Cancelación excepcional</strong>
+            <input value={reason} onChange={(event) => onReason(event.target.value)} placeholder="Motivo verificable" />
+            <button onClick={onCancel} disabled={!reason.trim() || tx.status === "pending"}>Cancelar y devolver escrow</button>
+          </div>}
+        </div>}
+        <TxState tx={tx} />
+      </aside>
+      </section>
+    </section>
+  );
+}
+
+function BountyCard({
+  bounty,
+  nowSeconds,
+  selected,
+  onSelect,
+}: {
+  bounty: BountyDTO;
+  nowSeconds: number;
+  selected: boolean;
+  onSelect: (id: string) => void;
+}) {
+  const countdown = bountyCountdown(bounty, nowSeconds);
+  const deadlineSeconds = Number(bounty.deadline);
+  const displayState = bounty.state === "Open" && Number.isFinite(deadlineSeconds) && deadlineSeconds <= nowSeconds
+    ? "Esperando resolucion"
+    : bounty.state;
+  return (
+    <article className={selected ? "challenge-card selected" : "challenge-card"}>
+      <div className="challenge-card-top"><Trophy size={18} /><strong>{displayState}</strong></div>
+      <h3>{bounty.title || `Bounty #${bounty.id}`}</h3>
+      <p>{bounty.description || "Entrega verificable requerida."}</p>
+      <div className="challenge-meta">
+        <span>{formatUsdt(toBigIntAmount(bounty.rewardPool))} aUSDT</span>
+        <span>ID #{bounty.id}</span>
+      </div>
+      {countdown && <time className={`lifecycle-countdown ${countdown.urgency}`} dateTime={countdown.target}>{countdown.label}</time>}
+      <button className="entity-select" onClick={() => onSelect(bounty.id)}>{selected ? "Seleccionado" : "Ver bounty"}</button>
+    </article>
+  );
 }
 
 function CreateView({
@@ -1220,7 +1925,7 @@ function CreateView({
           ))}
         </div>
         <StepLine done={hasEnoughBalance} label="Tienes aUSDT testnet suficiente" action="Recibir aUSDT testnet" onAction={onAddFunds} />
-        <StepLine done={!needsApproval} label="Alterford esta autorizado a usar solo el monto mostrado" action="Autorizar aUSDT" onAction={onApprove} />
+        <StepLine done={!needsApproval} label="Permiso disponible para crear este mercado" action="Autorizar una vez" onAction={onApprove} />
         <button className="primary-action" onClick={onCreate} disabled={!hasEnoughBalance || needsApproval}>
           Crear mercado
         </button>
@@ -1238,11 +1943,29 @@ function PortfolioView({
   balanceLabel,
   gasBalanceLabel,
   allowanceLabel,
+  challengeAllowanceLabel,
+  bountyAllowanceLabel,
+  marketApprovalTargetLabel,
+  challengeApprovalTargetLabel,
+  bountyApprovalTargetLabel,
+  approvalMode,
+  marketAllowance,
+  challengeAllowance,
+  bountyAllowance,
+  marketPermissionReady,
+  challengePermissionReady,
+  bountyPermissionReady,
   marketId,
   tx,
   onMarketId,
   onAddFunds,
   onApprove,
+  onApproveChallenge,
+  onApproveBounty,
+  onApprovalMode,
+  onRevokeMarket,
+  onRevokeChallenge,
+  onRevokeBounty,
   onClaim,
   onRefund,
   onSignXmr,
@@ -1254,11 +1977,29 @@ function PortfolioView({
   balanceLabel: string;
   gasBalanceLabel: string;
   allowanceLabel: string;
+  challengeAllowanceLabel: string;
+  bountyAllowanceLabel: string;
+  marketApprovalTargetLabel: string;
+  challengeApprovalTargetLabel: string;
+  bountyApprovalTargetLabel: string;
+  approvalMode: ApprovalMode;
+  marketAllowance: bigint;
+  challengeAllowance: bigint;
+  bountyAllowance: bigint;
+  marketPermissionReady: boolean;
+  challengePermissionReady: boolean;
+  bountyPermissionReady: boolean;
   marketId: string;
   tx: { status: string; label: string; hash?: string; error?: string };
   onMarketId: (value: string) => void;
   onAddFunds: () => void;
   onApprove: () => void;
+  onApproveChallenge: () => void;
+  onApproveBounty: () => void;
+  onApprovalMode: (mode: ApprovalMode) => void;
+  onRevokeMarket: () => void;
+  onRevokeChallenge: () => void;
+  onRevokeBounty: () => void;
   onClaim: () => void;
   onRefund: () => void;
   onSignXmr: (input: XmrConversionAuthorization) => Promise<Hex>;
@@ -1282,11 +2023,61 @@ function PortfolioView({
         signAuthorization={onSignXmr}
       />
       <FiatOnRampCard walletAddress={depositAddress} />
-      <InfoCard title="Autorizacion" icon={<ShieldCheck size={18} />}>
-        <strong>{allowanceLabel}</strong>
-        <span>Autorizar no cobra fondos. Es permiso previo; el cobro ocurre solo al crear, aceptar reto o apostar.</span>
-        <button onClick={onApprove}>Autorizar aUSDT testnet</button>
+      <div className="permission-card-wrap">
+      <InfoCard title="Permisos de gasto" icon={<ShieldCheck size={18} />}>
+        <div className="approval-mode-control" role="group" aria-label="Frecuencia de autorizaciones">
+          <button
+            className={approvalMode === "smart" ? "selected" : ""}
+            aria-pressed={approvalMode === "smart"}
+            onClick={() => onApprovalMode("smart")}
+          >
+            Menos confirmaciones
+          </button>
+          <button
+            className={approvalMode === "exact" ? "selected" : ""}
+            aria-pressed={approvalMode === "exact"}
+            onClick={() => onApprovalMode("exact")}
+          >
+            Permiso exacto
+          </button>
+        </div>
+        <span>
+          {approvalMode === "smart"
+            ? "Autoriza un limite reutilizable pequeno. Se consume con cada uso, nunca es ilimitado y puedes revocarlo cuando quieras."
+            : "Autoriza solamente el importe de la operacion actual; normalmente pedira permiso otra vez en la siguiente."}
+        </span>
+        <div className="permission-list">
+          <PermissionRow
+            label="Mercados"
+            allowanceLabel={allowanceLabel}
+            targetLabel={marketApprovalTargetLabel}
+            ready={marketPermissionReady}
+            canRevoke={marketAllowance > 0n}
+            onApprove={onApprove}
+            onRevoke={onRevokeMarket}
+          />
+          <PermissionRow
+            label="Retos"
+            allowanceLabel={challengeAllowanceLabel}
+            targetLabel={challengeApprovalTargetLabel}
+            ready={challengePermissionReady}
+            canRevoke={challengeAllowance > 0n}
+            onApprove={onApproveChallenge}
+            onRevoke={onRevokeChallenge}
+          />
+          <PermissionRow
+            label="Bounties"
+            allowanceLabel={bountyAllowanceLabel}
+            targetLabel={bountyApprovalTargetLabel}
+            ready={bountyPermissionReady}
+            canRevoke={bountyAllowance > 0n}
+            onApprove={onApproveBounty}
+            onRevoke={onRevokeBounty}
+          />
+        </div>
+        <small>Autorizar no mueve fondos. Cada apuesta, reto o bounty conserva su propia confirmacion de pago.</small>
       </InfoCard>
+      </div>
       <InfoCard title="aUSDT testnet" icon={<Zap size={18} />}>
         <span>Recibe 100 aUSDT mock para pruebas. Solo pagas gas de Base Sepolia.</span>
         <button onClick={onAddFunds}>Recibir 100 aUSDT testnet</button>
@@ -1301,6 +2092,39 @@ function PortfolioView({
         <TxState tx={tx} />
       </InfoCard>
     </section>
+  );
+}
+
+function PermissionRow({
+  label,
+  allowanceLabel,
+  targetLabel,
+  ready,
+  canRevoke,
+  onApprove,
+  onRevoke,
+}: {
+  label: string;
+  allowanceLabel: string;
+  targetLabel: string;
+  ready: boolean;
+  canRevoke: boolean;
+  onApprove: () => void;
+  onRevoke: () => void;
+}) {
+  return (
+    <div className="permission-row">
+      <div>
+        <strong>{label}</strong>
+        <span>Disponible: {allowanceLabel}</span>
+        {!ready && <small>Proximo limite: {targetLabel}</small>}
+      </div>
+      <div className="permission-actions">
+        {!ready && <button onClick={onApprove}>Autorizar una vez</button>}
+        {canRevoke && <button className="text-link" onClick={onRevoke}>Revocar</button>}
+        {ready && <span className="permission-ready"><CheckCircle2 size={15} /> Listo</span>}
+      </div>
+    </div>
   );
 }
 
@@ -1494,7 +2318,7 @@ function CreatorView({
             ? "Verifica la fuente externa y elige explicitamente el resultado de cada mercado. Resolver distribuye el pool; no se puede deshacer."
             : "La wallet conectada no tiene permiso para resolver. Conecta la wallet oficial del operador."}
         </span>
-        <div className="operator-market-list">
+        {isResolver ? <div className="operator-market-list">
           {resolutionMarkets.length === 0 && <small>No hay mercados pendientes de resolucion.</small>}
           {resolutionMarkets.map((market) => (
             <article className="operator-market" key={market.id}>
@@ -1522,7 +2346,18 @@ function CreatorView({
               </div>
             </article>
           ))}
-        </div>
+        </div> : <div className="operator-market-list participant-resolution-list">
+          {resolutionMarkets.length === 0 && <small>No hay mercados esperando resolucion.</small>}
+          {resolutionMarkets.map((market) => (
+            <article className="operator-market" key={market.id}>
+              <div>
+                <strong>#{market.id} · Esperando resolucion del operador</strong>
+                <span>{market.title}</span>
+                <small>Tu apuesta permanece en escrow. No necesitas enviar otra transaccion para que el operador publique el resultado.</small>
+              </div>
+            </article>
+          ))}
+        </div>}
         <details className="history-panel compact-history">
           <summary>Mercados finalizados ({historyMarkets.length})</summary>
           {historyMarkets.map((market) => <small key={market.id}>#{market.id} · {market.state} · {market.title}</small>)}
@@ -1540,6 +2375,30 @@ function StatusItem({ icon, label, value }: { icon: ReactNode; label: string; va
       <span>{label}</span>
       <strong>{value}</strong>
     </div>
+  );
+}
+
+function FirstRunIntro({ onDismiss }: { onDismiss: () => void }) {
+  return (
+    <section className="first-run-intro" aria-label="Guia inicial de Alterford">
+      <div>
+        <p className="eyebrow">Base Sepolia / Beta funcional</p>
+        <h2>Predice. Reta. Demuestra.</h2>
+        <p>
+          Alterford conecta personas: la plataforma nunca apuesta contra ti. Los fondos quedan
+          protegidos en contratos hasta que el resultado se resuelve.
+        </p>
+      </div>
+      <ol>
+        <li><strong>1</strong><span>Entra con email o conecta tu wallet.</span></li>
+        <li><strong>2</strong><span>Recibe aUSDT de prueba y elige un mercado, reto o bounty.</span></li>
+        <li><strong>3</strong><span>Confirma cada operacion y reclama el resultado on-chain.</span></li>
+      </ol>
+      <div className="intro-action">
+        <span>aUSDT y ETH de Base Sepolia no tienen valor real.</span>
+        <button className="primary-action" onClick={onDismiss}>Entrar a Alterford</button>
+      </div>
+    </section>
   );
 }
 
@@ -1587,19 +2446,9 @@ function TxState({ tx }: { tx: { status: string; label: string; hash?: string; e
   );
 }
 
-function mergeMarkets(indexed: MarketDTO[], fallback: MarketDTO[]): MarketDTO[] {
-  const normalized = indexed.map((market) => ({
-    ...market,
-    id: market.id ?? String((market as { marketId?: string }).marketId ?? "0"),
-    description: market.description || "Mercado creado por usuarios en Base Sepolia.",
-    category: market.category || "UserMarkets",
-    state: market.state || "Open",
-  }));
-  return normalized.length > 0 ? normalized : fallback;
-}
-
 function toMarketViewModel(market: MarketDTO, nowSeconds: number): MarketViewModel {
   const lifecycle = marketAvailability(market, nowSeconds);
+  const countdown = marketCountdown(market, nowSeconds);
   return {
     id: market.id,
     title: market.title,
@@ -1612,6 +2461,9 @@ function toMarketViewModel(market: MarketDTO, nowSeconds: number): MarketViewMod
     lockTime: market.lockTime || "",
     resolutionTime: market.resolutionTime || "",
     lifecycleLabel: lifecycle.label,
+    countdownLabel: countdown?.label,
+    countdownUrgency: countdown?.urgency,
+    countdownTarget: countdown?.target,
     canResolve: lifecycle.group === "resolution" && lifecycle.actionable,
   };
 }
@@ -1657,6 +2509,18 @@ function formatPayoutMultiple(payout: bigint, stake: bigint): string {
   if (stake <= 0n) return "0.00x";
   const hundredths = (payout * 100n) / stake;
   return `${hundredths / 100n}.${(hundredths % 100n).toString().padStart(2, "0")}x`;
+}
+
+function shortAddress(value: string) {
+  return value.length > 12 ? `${value.slice(0, 6)}...${value.slice(-4)}` : value;
+}
+
+function evidenceHttpUrl(uri: string) {
+  if (uri.startsWith("ipfs://")) {
+    const cidPath = uri.slice("ipfs://".length).replace(/^ipfs\//, "");
+    return `https://ipfs.io/ipfs/${encodeURI(cidPath)}`;
+  }
+  return /^https:\/\//i.test(uri) ? uri : "#";
 }
 
 function toPoolArray(poolByOutcome: unknown): readonly bigint[] {

@@ -28,7 +28,12 @@ export function isSupportedExecutionChain(chainId: number | undefined): chainId 
 }
 
 export function requireAddresses(addresses: Partial<ContractAddresses>): ContractAddresses {
-  if (!addresses.settlementToken || !addresses.creationBondPolicy || !addresses.marketFactory) {
+  if (
+    !addresses.settlementToken
+      || !addresses.creationBondPolicy
+      || !addresses.bondContextResolver
+      || !addresses.marketFactory
+  ) {
     throw new Error("Alterford contract addresses are not configured for this network.");
   }
   return addresses as ContractAddresses;

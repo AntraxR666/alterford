@@ -11,6 +11,7 @@ interface ImportMetaEnv {
   readonly VITE_CHAIN_ID?: string;
   readonly VITE_SETTLEMENT_TOKEN_ADDRESS?: `0x${string}`;
   readonly VITE_CREATION_BOND_POLICY_ADDRESS?: `0x${string}`;
+  readonly VITE_BOND_CONTEXT_RESOLVER_ADDRESS?: `0x${string}`;
   readonly VITE_MARKET_FACTORY_ADDRESS?: `0x${string}`;
   readonly VITE_BOUNTY_FACTORY_ADDRESS?: `0x${string}`;
   readonly VITE_CHALLENGE_FACTORY_ADDRESS?: `0x${string}`;

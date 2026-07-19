@@ -10,10 +10,13 @@ export interface EmbeddedProvider {
 export interface EmbeddedWalletClient {
   readonly connected: boolean;
   readonly connection?: { ethereumProvider: EmbeddedProvider | null } | null;
+  readonly cachedConnector?: string | null;
   init(): Promise<void>;
   connect(): Promise<{ ethereumProvider: EmbeddedProvider | null } | null>;
   logout(options?: { cleanup: boolean }): Promise<void>;
   switchChain(params: { chainId: string }): Promise<void>;
+  on?(event: string, listener: (...args: unknown[]) => void): void;
+  removeListener?(event: string, listener: (...args: unknown[]) => void): void;
 }
 
 export interface EmbeddedWalletController {
@@ -61,6 +64,9 @@ export function createEmbeddedWalletController(
     },
     async restore() {
       const client = await initializedClient();
+      if (!client.connected && client.cachedConnector) {
+        await waitForCachedConnection(client);
+      }
       activeProvider = client.connected ? client.connection?.ethereumProvider ?? null : null;
       return activeProvider;
     },
@@ -72,6 +78,36 @@ export function createEmbeddedWalletController(
       return activeProvider;
     },
   };
+}
+
+function waitForCachedConnection(client: EmbeddedWalletClient): Promise<void> {
+  const hasProvider = () => client.connected && Boolean(client.connection?.ethereumProvider);
+  if (hasProvider()) return Promise.resolve();
+
+  return new Promise((resolve) => {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let poll: ReturnType<typeof setInterval> | undefined;
+    const finish = () => {
+      if (timeout) clearTimeout(timeout);
+      if (poll) clearInterval(poll);
+      client.removeListener?.("connected", check);
+      client.removeListener?.("authorized", check);
+      client.removeListener?.("rehydration_error", finish);
+      client.removeListener?.("errored", finish);
+      resolve();
+    };
+    const check = () => {
+      if (hasProvider()) finish();
+    };
+
+    client.on?.("connected", check);
+    client.on?.("authorized", check);
+    client.on?.("rehydration_error", finish);
+    client.on?.("errored", finish);
+    poll = setInterval(check, 25);
+    timeout = setTimeout(finish, 15_000);
+    check();
+  });
 }
 
 async function accounts(provider: EmbeddedProvider): Promise<readonly Address[]> {

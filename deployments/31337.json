@@ -1,47 +1,59 @@
 {
   "chainId": 31337,
   "chainName": "Anvil",
-  "rpcUrl": "http://127.0.0.1:8545",
+  "rpcUrl": "http://127.0.0.1:20545",
   "deployer": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
   "securityCouncil": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
   "coldWallet": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-  "deployedAt": "2026-07-14T11:22:41.793Z",
+  "deployedAt": "2026-07-17T01:15:55.295Z",
   "startBlock": 1,
   "contracts": {
     "settlementToken": {
       "address": "0x5fbdb2315678afecb367f032d93f642f64180aa3",
-      "txHash": "0x7062616009ee3b762043828c57dbb4ea03ffb28b266dc91c7a3121dbf0fdee25",
+      "txHash": "0x7744d133339a0d7350b6ffe64912edb82776ec697ccc5c31ead88ce06df89a62",
       "blockNumber": 1,
       "artifact": "MockSettlementToken.sol/MockSettlementToken.json"
     },
     "creationBondPolicy": {
       "address": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
-      "txHash": "0xf95524dcf401197277e7d2a76e518432cc4987270d7f9fb100d21838784c30c1",
+      "txHash": "0xc0a0e8409549fbab2608a82b08051f29575c5481e8fc9834103a9a97996a0e88",
       "blockNumber": 2,
       "artifact": "CreationBondPolicy.sol/CreationBondPolicy.json"
     },
-    "marketFactory": {
+    "bondContextResolver": {
       "address": "0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0",
-      "txHash": "0xdadf950ab18e6906e4f3fdcf0584b7842a026996d11d7c26abb182c6b49b417e",
+      "txHash": "0xfe094e68d5a1e0582f7df8e1c59864a276218439533bb9a4662bf17091268d8f",
       "blockNumber": 3,
+      "artifact": "CreationBondContextResolver.sol/CreationBondContextResolver.json"
+    },
+    "alterfordForwarder": {
+      "address": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
+      "txHash": "0x21dcab714967b150f69355e2851b5050b991c264154ce934ac2cd1368f503302",
+      "blockNumber": 4,
+      "artifact": "AlterfordForwarder.sol/AlterfordForwarder.json"
+    },
+    "marketFactory": {
+      "address": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
+      "txHash": "0xcafcbab836ed4f52dd6edfeb209c7337cb55bbf4c83ab1152d6f4ff4e546a039",
+      "blockNumber": 5,
       "artifact": "MarketFactory.sol/MarketFactory.json"
     },
     "bountyFactory": {
-      "address": "0xcf7ed3acca5a467e9e704c703e8d87f634fb0fc9",
-      "txHash": "0x7b40fabbd11d69ec1ff872e8b84366cacf4e049a07b2f8863d35bbecbb0ed461",
-      "blockNumber": 4,
+      "address": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
+      "txHash": "0x3cecbda1662af9356e27331ab649150133eeefd2788d24f86d55b7c745c83b03",
+      "blockNumber": 6,
       "artifact": "BountyFactory.sol/BountyFactory.json"
     },
     "challengeFactory": {
-      "address": "0xdc64a140aa3e981100a9beca4e685f962f0cf6c9",
-      "txHash": "0xb0aa3613a8f844a82f5614981f9b8e628c3daba94af34aeb97048b6a3e24e62a",
-      "blockNumber": 5,
+      "address": "0x0165878a594ca255338adfa4d48449f69242eb8f",
+      "txHash": "0xd9d8ae0f889aa4e0306a43caa818b5694f3b7d181b4f35f43e93d3f8f5ea1a79",
+      "blockNumber": 7,
       "artifact": "ChallengeFactory.sol/ChallengeFactory.json"
     },
     "bountyRecoveryVault": {
-      "address": "0x5fc8d32690cc91d4c39d9d3abcbd16989f875707",
-      "txHash": "0xf239ad026720912135da487f957110ebf20e6529047da7fbd42b36d34e0f4057",
-      "blockNumber": 6,
+      "address": "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+      "txHash": "0x5ca55c40153fd68ffc66e85c7281ef6b78a1526a485cb70248596e896509c6bf",
+      "blockNumber": 8,
       "artifact": "BountyRecoveryVault.sol/BountyRecoveryVault.json"
     }
   }

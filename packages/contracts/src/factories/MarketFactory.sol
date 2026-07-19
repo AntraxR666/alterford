@@ -7,6 +7,7 @@ import { AlterfordTypes } from "../libraries/AlterfordTypes.sol";
 import { AlterfordErrors } from "../libraries/AlterfordErrors.sol";
 import { FeePolicy } from "../libraries/FeePolicy.sol";
 import { CreationBondPolicy } from "../bonds/CreationBondPolicy.sol";
+import { CreationBondContextResolver } from "../bonds/CreationBondContextResolver.sol";
 import { IERC20 } from "../token/IERC20.sol";
 import { EIP712 } from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import { SignatureChecker } from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
@@ -22,6 +23,9 @@ contract MarketFactory is Governed, ReentrancyGuardLite, EIP712 {
         AlterfordTypes.MarketState state;
         AlterfordTypes.NoWinnersPolicy noWinnersPolicy;
         uint8 winningOutcome;
+        bytes32 categoryId;
+        AlterfordTypes.Mode mode;
+        AlterfordTypes.RiskLevel riskLevel;
         string[] outcomes;
     }
 
@@ -41,6 +45,7 @@ contract MarketFactory is Governed, ReentrancyGuardLite, EIP712 {
 
     uint256 public nextMarketId = 1;
     CreationBondPolicy public bondPolicy;
+    CreationBondContextResolver public bondContextResolver;
     mapping(uint256 => Market) public markets;
     mapping(uint256 => mapping(uint8 => uint256)) public poolByOutcome;
     mapping(uint256 => mapping(address => mapping(uint8 => uint256))) public stakeByUserOutcome;
@@ -63,7 +68,10 @@ contract MarketFactory is Governed, ReentrancyGuardLite, EIP712 {
         address indexed creator,
         address indexed settlementToken,
         bytes32 metadataHash,
-        string metadataURI
+        string metadataURI,
+        bytes32 categoryId,
+        AlterfordTypes.Mode mode,
+        AlterfordTypes.RiskLevel riskLevel
     );
     event BetPlaced(
         uint256 indexed marketId, address indexed user, uint8 indexed outcome, uint256 amount
@@ -82,6 +90,7 @@ contract MarketFactory is Governed, ReentrancyGuardLite, EIP712 {
     event RefundClaimed(uint256 indexed marketId, address indexed user, uint256 amount);
     event MarketFraudConfirmed(uint256 indexed marketId, bytes32 reasonHash);
     event BondPolicyUpdated(address indexed oldPolicy, address indexed newPolicy);
+    event BondContextResolverUpdated(address indexed oldResolver, address indexed newResolver);
     event BondCalculated(
         bytes32 indexed entityType,
         uint256 indexed entityId,
@@ -114,15 +123,24 @@ contract MarketFactory is Governed, ReentrancyGuardLite, EIP712 {
     );
     event NonceInvalidated(address indexed bettor, uint256 oldNonce, uint256 newNonce);
 
-    constructor(address initialAdmin, address initialBondPolicy)
+    constructor(address initialAdmin, address initialBondPolicy, address initialBondContextResolver)
         Governed(initialAdmin)
         EIP712("AlterfordMarketFactory", "1")
     {
-        if (initialBondPolicy == address(0)) {
+        if (initialBondPolicy == address(0) || initialBondContextResolver == address(0)) {
             revert AlterfordErrors.InvalidBondPolicy();
         }
         bondPolicy = CreationBondPolicy(initialBondPolicy);
+        bondContextResolver = CreationBondContextResolver(initialBondContextResolver);
         emit BondPolicyUpdated(address(0), initialBondPolicy);
+        emit BondContextResolverUpdated(address(0), initialBondContextResolver);
+    }
+
+    function setBondContextResolver(address nextResolver) external onlyRole(GOVERNOR_ROLE) {
+        if (nextResolver == address(0)) revert AlterfordErrors.InvalidBondPolicy();
+        address oldResolver = address(bondContextResolver);
+        bondContextResolver = CreationBondContextResolver(nextResolver);
+        emit BondContextResolverUpdated(oldResolver, nextResolver);
     }
 
     function setBondPolicy(address nextBondPolicy) external onlyRole(GOVERNOR_ROLE) {
@@ -140,7 +158,7 @@ contract MarketFactory is Governed, ReentrancyGuardLite, EIP712 {
         uint256 lockTime,
         uint256 resolutionTime,
         AlterfordTypes.NoWinnersPolicy noWinnersPolicy,
-        CreationBondPolicy.BondContext calldata bondContext
+        bytes32 categoryId
     ) external nonReentrant whenNotPaused returns (uint256 marketId) {
         if (settlementToken == address(0)) revert AlterfordErrors.InvalidToken();
         if (metadataHash == bytes32(0)) revert AlterfordErrors.InvalidMetadataHash();
@@ -148,10 +166,9 @@ contract MarketFactory is Governed, ReentrancyGuardLite, EIP712 {
         if (lockTime <= block.timestamp || resolutionTime <= lockTime) {
             revert AlterfordErrors.InvalidAmount();
         }
-        if (bondContext.entityType != AlterfordTypes.EntityType.Market) {
-            revert AlterfordErrors.InvalidBondPolicy();
-        }
-
+        CreationBondPolicy.BondContext memory bondContext = bondContextResolver.resolve(
+            msg.sender, AlterfordTypes.EntityType.Market, categoryId, 0
+        );
         (uint256 requiredBond, uint16 reasonFlags) = bondPolicy.previewBond(bondContext);
         marketId = nextMarketId++;
 
@@ -164,6 +181,9 @@ contract MarketFactory is Governed, ReentrancyGuardLite, EIP712 {
         market.resolutionTime = resolutionTime;
         market.state = AlterfordTypes.MarketState.Open;
         market.noWinnersPolicy = noWinnersPolicy;
+        market.categoryId = categoryId;
+        market.mode = bondContext.mode;
+        market.riskLevel = bondContext.categoryRisk;
 
         for (uint256 i = 0; i < outcomes.length; i++) {
             market.outcomes.push(outcomes[i]);
@@ -176,7 +196,16 @@ contract MarketFactory is Governed, ReentrancyGuardLite, EIP712 {
 
         emit BondCalculated("Market", marketId, msg.sender, requiredBond, reasonFlags);
         emit BondLocked("Market", marketId, msg.sender, requiredBond);
-        emit MarketCreated(marketId, msg.sender, settlementToken, metadataHash, metadataURI);
+        emit MarketCreated(
+            marketId,
+            msg.sender,
+            settlementToken,
+            metadataHash,
+            metadataURI,
+            categoryId,
+            bondContext.mode,
+            bondContext.categoryRisk
+        );
     }
 
     function releaseBond(uint256 marketId) external nonReentrant onlyRole(GOVERNOR_ROLE) {

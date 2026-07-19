@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import { ChallengeFactory } from "../src/factories/ChallengeFactory.sol";
 import { CreationBondPolicy } from "../src/bonds/CreationBondPolicy.sol";
+import { CreationBondContextResolver } from "../src/bonds/CreationBondContextResolver.sol";
 import { AchievementRegistry } from "../src/growth/AchievementRegistry.sol";
 import { AntiSybilEngine } from "../src/reputation/AntiSybilEngine.sol";
 import { ComplianceGuard } from "../src/moderation/ComplianceGuard.sol";
@@ -46,16 +47,7 @@ contract ChallengeUser {
             keccak256("challenge-rules"),
             "ipfs://challenge",
             deadline,
-            CreationBondPolicy.BondContext({
-                entityType: AlterfordTypes.EntityType.Challenge,
-                mode: AlterfordTypes.Mode.Underworld,
-                creatorTier: AlterfordTypes.CreatorTier.Basic,
-                categoryRisk: AlterfordTypes.RiskLevel.High,
-                reputation: AlterfordTypes.ReputationBand.New,
-                expectedVolume: rewardPool,
-                disputeCount: 1,
-                fraudCount: 0
-            })
+            factory.bondContextResolver().CATEGORY_VANILLA_CHALLENGE()
         );
     }
 
@@ -96,8 +88,9 @@ contract AlterfordModulesTest {
     function testChallengeFactoryLocksReleasesAndSlashesDynamicBond() public {
         MockSettlementToken token = new MockSettlementToken();
         CreationBondPolicy policy = new CreationBondPolicy(address(this));
+        CreationBondContextResolver resolver = new CreationBondContextResolver(address(this));
         ChallengeFactory factory =
-            new ChallengeFactory(address(this), address(policy), address(0xF0));
+            new ChallengeFactory(address(this), address(policy), address(resolver), address(0xF0));
 
         token.mint(address(this), 30_000_000);
         token.approve(address(factory), 30_000_000);
@@ -108,7 +101,7 @@ contract AlterfordModulesTest {
             keccak256("challenge-rules"),
             "ipfs://challenge",
             block.timestamp + 1 days,
-            _bondContext(AlterfordTypes.EntityType.Challenge)
+            resolver.CATEGORY_VANILLA_CHALLENGE()
         );
 
         require(factory.bondByChallenge(challengeId) == 5_000_000, "challenge bond locked");
@@ -123,7 +116,7 @@ contract AlterfordModulesTest {
             keccak256("challenge-rules-2"),
             "ipfs://challenge-2",
             block.timestamp + 1 days,
-            _bondContext(AlterfordTypes.EntityType.Challenge)
+            resolver.CATEGORY_VANILLA_CHALLENGE()
         );
         factory.slashBond(fraudChallengeId, keccak256("fraud"));
         require(factory.bondByChallenge(fraudChallengeId) == 0, "challenge bond slashed");
@@ -132,8 +125,9 @@ contract AlterfordModulesTest {
     function testChallengeEscrowAcceptEvidenceResolvePaysFeesAndBonds() public {
         MockSettlementToken token = new MockSettlementToken();
         CreationBondPolicy policy = new CreationBondPolicy(address(this));
+        CreationBondContextResolver resolver = new CreationBondContextResolver(address(this));
         ChallengeFactory factory =
-            new ChallengeFactory(address(this), address(policy), address(0xF0));
+            new ChallengeFactory(address(this), address(policy), address(resolver), address(0xF0));
         ChallengeUser creator = new ChallengeUser();
         ChallengeUser executor = new ChallengeUser();
 
@@ -144,10 +138,16 @@ contract AlterfordModulesTest {
 
         uint256 challengeId =
             creator.createChallenge(factory, token, 100_000_000, block.timestamp + 1 days);
-        require(token.balanceOf(address(factory)) == 110_000_000, "creator escrow locked");
+        uint256 creatorBond = factory.bondByChallenge(challengeId);
+        require(
+            token.balanceOf(address(factory)) == 100_000_000 + creatorBond, "creator escrow locked"
+        );
 
         executor.accept(factory, challengeId, "https://live.example/challenge");
-        require(token.balanceOf(address(factory)) == 120_000_000, "executor bond locked");
+        require(
+            token.balanceOf(address(factory)) == 100_000_000 + (creatorBond * 2),
+            "executor bond locked"
+        );
 
         executor.submitEvidence(
             factory,
@@ -172,8 +172,9 @@ contract AlterfordModulesTest {
     function testChallengeCancelRefundsRewardAndBonds() public {
         MockSettlementToken token = new MockSettlementToken();
         CreationBondPolicy policy = new CreationBondPolicy(address(this));
+        CreationBondContextResolver resolver = new CreationBondContextResolver(address(this));
         ChallengeFactory factory =
-            new ChallengeFactory(address(this), address(policy), address(0xF0));
+            new ChallengeFactory(address(this), address(policy), address(resolver), address(0xF0));
         ChallengeUser creator = new ChallengeUser();
         ChallengeUser executor = new ChallengeUser();
 
@@ -196,8 +197,9 @@ contract AlterfordModulesTest {
     function testChallengeExecutorFailureRefundsRewardAndSlashesExecutorBond() public {
         MockSettlementToken token = new MockSettlementToken();
         CreationBondPolicy policy = new CreationBondPolicy(address(this));
+        CreationBondContextResolver resolver = new CreationBondContextResolver(address(this));
         ChallengeFactory factory =
-            new ChallengeFactory(address(this), address(policy), address(0xF0));
+            new ChallengeFactory(address(this), address(policy), address(resolver), address(0xF0));
         ChallengeUser creator = new ChallengeUser();
         ChallengeUser executor = new ChallengeUser();
 
@@ -208,13 +210,16 @@ contract AlterfordModulesTest {
 
         uint256 challengeId =
             creator.createChallenge(factory, token, 20_000_000, block.timestamp + 1 days);
+        uint256 executorBond = factory.bondByChallenge(challengeId);
         executor.accept(factory, challengeId, "https://live.example/challenge");
 
         factory.resolveChallenge(challengeId, false, false, true, keccak256("not-fulfilled"));
 
         require(token.balanceOf(address(creator)) == 30_000_000, "creator reward and bond refunded");
-        require(token.balanceOf(address(executor)) == 0, "executor bond slashed");
-        require(token.balanceOf(address(factory)) == 10_000_000, "slashed bond retained");
+        require(
+            token.balanceOf(address(executor)) == 10_000_000 - executorBond, "executor bond slashed"
+        );
+        require(token.balanceOf(address(factory)) == executorBond, "slashed bond retained");
     }
 
     function testOracleRouterAssignsSubmitsAndChallengesResults() public {

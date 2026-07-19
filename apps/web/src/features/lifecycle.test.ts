@@ -1,6 +1,14 @@
-import type { ChallengeDTO, MarketDTO } from "@alterford/sdk";
+import type { BountyDTO, ChallengeDTO, MarketDTO } from "@alterford/sdk";
 import { describe, expect, it } from "vitest";
-import { challengeAvailability, marketAvailability, partitionChallenges } from "./lifecycle";
+import {
+  challengeAvailability,
+  challengeCountdown,
+  bountyCountdown,
+  formatRemainingTime,
+  marketAvailability,
+  marketCountdown,
+  partitionChallenges,
+} from "./lifecycle";
 
 const nowSeconds = 1_750_000_000;
 
@@ -40,7 +48,66 @@ const challenge = (overrides: Partial<ChallengeDTO> = {}): ChallengeDTO => ({
   ...overrides,
 });
 
+const bounty = (overrides: Partial<BountyDTO> = {}): BountyDTO => ({
+  id: "bounty-1",
+  chainId: 84532,
+  address: "0x0000000000000000000000000000000000000021",
+  creator: "0x0000000000000000000000000000000000000022",
+  settlementToken: "0x0000000000000000000000000000000000000003",
+  title: "Complete the bounty",
+  description: "A lifecycle test bounty.",
+  rewardPool: 1_000_000n,
+  rewardEscrow: 1_000_000n,
+  deadline: String(nowSeconds + 3_600),
+  state: "Open",
+  metadataURI: "",
+  rulesHash: "0x01",
+  ...overrides,
+});
+
 describe("lifecycle presentation helpers", () => {
+  it("formats live countdowns without negative values", () => {
+    expect(formatRemainingTime(90_061)).toBe("1d 01h 01m");
+    expect(formatRemainingTime(3_661)).toBe("01h 01m");
+    expect(formatRemainingTime(59)).toBe("00m 59s");
+    expect(formatRemainingTime(-1)).toBe("00m 00s");
+  });
+
+  it("counts down an open market to betting close and then to resolution", () => {
+    expect(marketCountdown(market({
+      lockTime: String(nowSeconds + 3_600),
+      resolutionTime: String(nowSeconds + 7_200),
+    }), nowSeconds)).toMatchObject({ label: "Apuestas cierran en 01h 00m", urgency: "normal" });
+
+    expect(marketCountdown(market({
+      lockTime: String(nowSeconds - 1),
+      resolutionTime: String(nowSeconds + 600),
+    }), nowSeconds)).toMatchObject({ label: "Resolucion disponible en 10m 00s", urgency: "high" });
+  });
+
+  it("counts down challenge participation and optimistic dispute windows", () => {
+    expect(challengeCountdown(challenge({ deadline: String(nowSeconds + 900) }), nowSeconds))
+      .toMatchObject({ label: "Aceptacion cierra en 15m 00s", urgency: "high" });
+
+    expect(challengeCountdown(challenge({
+      state: "Review",
+      resolutionProposal: {
+        proposer: "0x0000000000000000000000000000000000000012",
+        executorSucceeded: true,
+        evidenceHash: "0x01",
+        disputeDeadline: String(nowSeconds + 3_600),
+      },
+    }), nowSeconds)).toMatchObject({ label: "Disputa cierra en 01h 00m", urgency: "normal" });
+  });
+
+  it("counts down an open bounty submission deadline", () => {
+    expect(bountyCountdown(bounty(), nowSeconds)).toMatchObject({
+      label: "Entrega cierra en 01h 00m",
+      urgency: "normal",
+    });
+    expect(bountyCountdown(bounty({ state: "Resolved" }), nowSeconds)).toBeUndefined();
+  });
+
   it("places resolved markets in history and makes them non-actionable", () => {
     expect(marketAvailability(market({ state: "Resolved" }), nowSeconds)).toEqual({
       group: "history",

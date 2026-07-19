@@ -51,6 +51,85 @@ describe("embedded wallet controller", () => {
     expect(controller.provider()).toBeNull();
   });
 
+  it("restores a cached social session that authorizes after initialization", async () => {
+    const evmProvider = provider();
+    let connected = false;
+    let connection: { ethereumProvider: ReturnType<typeof provider> } | null = null;
+    const listeners = new Map<string, Set<() => void>>();
+    const client = {
+      get connected() {
+        return connected;
+      },
+      get connection() {
+        return connection;
+      },
+      cachedConnector: "auth",
+      init: vi.fn(async () => {
+        setTimeout(() => {
+          connected = true;
+          connection = { ethereumProvider: evmProvider };
+          listeners.get("authorized")?.forEach((listener) => listener());
+        }, 0);
+      }),
+      connect: vi.fn(async () => connection),
+      logout: vi.fn(async () => undefined),
+      switchChain: vi.fn(async () => undefined),
+      on(event: string, listener: () => void) {
+        const eventListeners = listeners.get(event) ?? new Set<() => void>();
+        eventListeners.add(listener);
+        listeners.set(event, eventListeners);
+      },
+      removeListener(event: string, listener: () => void) {
+        listeners.get(event)?.delete(listener);
+      },
+    };
+    const controller = createEmbeddedWalletController(async () => client);
+
+    const restored = controller.restore();
+
+    await expect(restored).resolves.toBe(evmProvider);
+    expect(client.connect).not.toHaveBeenCalled();
+  });
+
+  it("waits for the provider when Web3Auth emits before publishing its connection", async () => {
+    const evmProvider = provider();
+    let connected = false;
+    let connection: { ethereumProvider: ReturnType<typeof provider> } | null = null;
+    const listeners = new Map<string, Set<() => void>>();
+    const client = {
+      get connected() {
+        return connected;
+      },
+      get connection() {
+        return connection;
+      },
+      cachedConnector: "auth",
+      init: vi.fn(async () => {
+        setTimeout(() => {
+          listeners.get("connected")?.forEach((listener) => listener());
+          setTimeout(() => {
+            connected = true;
+            connection = { ethereumProvider: evmProvider };
+          }, 10);
+        }, 0);
+      }),
+      connect: vi.fn(async () => connection),
+      logout: vi.fn(async () => undefined),
+      switchChain: vi.fn(async () => undefined),
+      on(event: string, listener: () => void) {
+        const eventListeners = listeners.get(event) ?? new Set<() => void>();
+        eventListeners.add(listener);
+        listeners.set(event, eventListeners);
+      },
+      removeListener(event: string, listener: () => void) {
+        listeners.get(event)?.delete(listener);
+      },
+    };
+    const controller = createEmbeddedWalletController(async () => client);
+
+    await expect(controller.restore()).resolves.toBe(evmProvider);
+  });
+
   it("fails closed when Web3Auth returns no EVM provider", async () => {
     const client: EmbeddedWalletClient = {
       connected: false,

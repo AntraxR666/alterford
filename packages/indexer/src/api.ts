@@ -1,6 +1,6 @@
 import type { BountyProjection, ChallengeProjection, MarketProjection } from "./projections.js";
 import type { ProjectionState } from "./projections.js";
-import type { Category, ModeAffinity } from "@alterford/sdk";
+import type { ModeAffinity } from "@alterford/sdk";
 
 export function createReadApi(state: ProjectionState) {
   return {
@@ -61,8 +61,8 @@ function enrichMarketMetadata(market: MarketProjection): MarketProjection {
     ...market,
     title: metadata.question || market.title,
     description: metadata.description || market.description || "Mercado creado por usuarios en Alterford.",
-    category: (metadata.category as Category | undefined) || market.category,
-    modeAffinity: (metadata.mode as ModeAffinity | undefined) || market.modeAffinity,
+    category: market.category,
+    modeAffinity: market.modeAffinity,
   };
 }
 
@@ -89,6 +89,7 @@ function enrichChallengeMetadata(challenge: ChallengeProjection): ChallengeProje
     ...challenge,
     title: metadata.title || challenge.title,
     description: metadata.evidence || challenge.description,
+    modeAffinity: metadata.mode || challenge.modeAffinity,
     liveStreamURI: metadata.live || challenge.liveStreamURI,
   };
 }
@@ -101,8 +102,14 @@ function parseAlterfordChallengeMetadata(metadataURI?: string) {
       title: url.searchParams.get("title")?.trim() || undefined,
       evidence: url.searchParams.get("evidence")?.trim() || undefined,
       live: url.searchParams.get("live")?.trim() || undefined,
+      mode: normalizeModeAffinity(url.searchParams.get("mode")),
     };
   } catch {
     return null;
   }
+}
+
+function normalizeModeAffinity(value: string | null): ModeAffinity | undefined {
+  if (value === "Vanilla" || value === "Underworld" || value === "Both") return value;
+  return undefined;
 }

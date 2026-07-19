@@ -30,8 +30,8 @@ describe("Alterford read API", () => {
     const [market] = createReadApi(state).listMarkets();
 
     expect(market.title).toBe("BTC supera 100k?");
-    expect(market.category).toBe("Crypto");
-    expect(market.modeAffinity).toBe("Underworld");
+    expect(market.category).toBe("UserMarkets");
+    expect(market.modeAffinity).toBe("Both");
     expect(market.description).toBe("Mercado creado por usuarios en Alterford.");
   });
 
@@ -61,6 +61,34 @@ describe("Alterford read API", () => {
       description: "Revisar firmas",
       rewardEscrow: 5_000_000n,
     });
+  });
+
+  it("derives challenge mode affinity from Alterford metadata URIs when the projection omitted it", () => {
+    const state = createInitialProjectionState();
+    projectEvent(state, {
+      id: "84532:202:0",
+      chainId: 84532,
+      blockNumber: 202n,
+      txHash: "0xchallenge",
+      logIndex: 0,
+      type: "ChallengeCreated",
+      payload: {
+        challengeId: "9",
+        creator: "0x0000000000000000000000000000000000000001",
+        rewardPool: 10_000_000n,
+        deadline: 1_900_000_000n,
+        state: "Open",
+        riskLevel: "Medium",
+        metadataURI: "alterford://challenge?title=Tattoo&mode=Underworld&evidence=Video%20continuo",
+        rulesHash: "0xrules",
+      },
+    });
+
+    const [challenge] = createReadApi(state).listChallenges();
+
+    expect(challenge.title).toBe("Tattoo");
+    expect(challenge.description).toBe("Video continuo");
+    expect(challenge.modeAffinity).toBe("Underworld");
   });
 
   it("filters bet and claim history by user case-insensitively", () => {

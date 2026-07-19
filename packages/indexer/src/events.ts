@@ -134,6 +134,15 @@ export type AlterfordEvent =
       }
     >
   | EventEnvelope<
+      "SubmissionEvidenceCreated",
+      {
+        bountyId: string;
+        submitter: Address;
+        submissionHash: string;
+        evidenceURI: string;
+      }
+    >
+  | EventEnvelope<
       "BountyResolved",
       {
         bountyId: string;

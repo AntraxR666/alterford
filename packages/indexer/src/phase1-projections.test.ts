@@ -81,6 +81,20 @@ describe("phase 1 resilience projections", () => {
     );
     projectEvent(
       state,
+      event<any>(
+        "SubmissionEvidenceCreated",
+        {
+          bountyId: "1",
+          submitter: executor,
+          submissionHash: "0xevidence",
+          evidenceURI: "ipfs://bafy-evidence",
+        },
+        11n,
+        1,
+      ),
+    );
+    projectEvent(
+      state,
       event<Extract<AlterfordEvent, { type: "BountyResolved" }>>(
         "BountyResolved",
         { bountyId: "1", winners: [executor, watcher], amounts: [2_000_000n, 1_000_000n] },
@@ -91,7 +105,11 @@ describe("phase 1 resilience projections", () => {
     const bounty = state.bounties.get("1");
     expect(bounty?.state).toBe("Resolved");
     expect(bounty?.rewardEscrow).toBe(0n);
-    expect(bounty?.submissions).toEqual([{ submitter: executor, submissionHash: "0xsubmission" }]);
+    expect(bounty?.submissions).toEqual([{
+      submitter: executor,
+      submissionHash: "0xevidence",
+      evidenceURI: "ipfs://bafy-evidence",
+    }]);
     expect(bounty?.winners).toEqual([executor, watcher]);
     expect(bounty?.amounts).toEqual([2_000_000n, 1_000_000n]);
 

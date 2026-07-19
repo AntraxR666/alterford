@@ -29,6 +29,12 @@ const verifications = [
     constructorArgs: encodeAbiParameters([{ type: "address" }], [deployer]),
   },
   {
+    name: "CreationBondContextResolver",
+    address: contracts.bondContextResolver.address,
+    target: "src/bonds/CreationBondContextResolver.sol:CreationBondContextResolver",
+    constructorArgs: encodeAbiParameters([{ type: "address" }], [deployer]),
+  },
+  {
     name: "AlterfordForwarder",
     address: contracts.alterfordForwarder.address,
     target: "src/metatx/AlterfordForwarder.sol:AlterfordForwarder",
@@ -39,8 +45,8 @@ const verifications = [
     address: contracts.marketFactory.address,
     target: "src/factories/MarketFactory.sol:MarketFactory",
     constructorArgs: encodeAbiParameters(
-      [{ type: "address" }, { type: "address" }],
-      [deployer, contracts.creationBondPolicy.address],
+      [{ type: "address" }, { type: "address" }, { type: "address" }],
+      [deployer, contracts.creationBondPolicy.address, contracts.bondContextResolver.address],
     ),
   },
   {
@@ -48,8 +54,8 @@ const verifications = [
     address: contracts.bountyFactory.address,
     target: "src/factories/BountyFactory.sol:BountyFactory",
     constructorArgs: encodeAbiParameters(
-      [{ type: "address" }, { type: "address" }],
-      [deployer, contracts.creationBondPolicy.address],
+      [{ type: "address" }, { type: "address" }, { type: "address" }],
+      [deployer, contracts.creationBondPolicy.address, contracts.bondContextResolver.address],
     ),
   },
   {
@@ -57,8 +63,18 @@ const verifications = [
     address: contracts.challengeFactory.address,
     target: "src/factories/ChallengeFactory.sol:ChallengeFactory",
     constructorArgs: encodeAbiParameters(
-      [{ type: "address" }, { type: "address" }, { type: "address" }],
-      [deployer, contracts.creationBondPolicy.address, contracts.alterfordForwarder.address],
+      [
+        { type: "address" },
+        { type: "address" },
+        { type: "address" },
+        { type: "address" },
+      ],
+      [
+        deployer,
+        contracts.creationBondPolicy.address,
+        contracts.bondContextResolver.address,
+        contracts.alterfordForwarder.address,
+      ],
     ),
   },
   {

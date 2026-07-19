@@ -14,6 +14,7 @@ export function configuredAddresses(): Partial<ContractAddresses> {
   return {
     settlementToken: envAddress(import.meta.env.VITE_SETTLEMENT_TOKEN_ADDRESS),
     creationBondPolicy: envAddress(import.meta.env.VITE_CREATION_BOND_POLICY_ADDRESS),
+    bondContextResolver: envAddress(import.meta.env.VITE_BOND_CONTEXT_RESOLVER_ADDRESS),
     marketFactory: envAddress(import.meta.env.VITE_MARKET_FACTORY_ADDRESS),
     bountyFactory: envAddress(import.meta.env.VITE_BOUNTY_FACTORY_ADDRESS),
     challengeFactory: envAddress(import.meta.env.VITE_CHALLENGE_FACTORY_ADDRESS),
@@ -22,5 +23,10 @@ export function configuredAddresses(): Partial<ContractAddresses> {
 }
 
 export function hasCoreAddresses(addresses: Partial<ContractAddresses>): addresses is ContractAddresses {
-  return Boolean(addresses.settlementToken && addresses.creationBondPolicy && addresses.marketFactory);
+  return Boolean(
+    addresses.settlementToken
+      && addresses.creationBondPolicy
+      && addresses.bondContextResolver
+      && addresses.marketFactory,
+  );
 }

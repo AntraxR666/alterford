@@ -16,6 +16,7 @@ const env = [
   `VITE_APP_URL=${process.env.VITE_APP_URL || (deployment.chainId === 31337 ? "http://127.0.0.1:5173" : "")}`,
   `VITE_SETTLEMENT_TOKEN_ADDRESS=${contracts.settlementToken.address}`,
   `VITE_CREATION_BOND_POLICY_ADDRESS=${contracts.creationBondPolicy.address}`,
+  `VITE_BOND_CONTEXT_RESOLVER_ADDRESS=${contracts.bondContextResolver.address}`,
   `VITE_MARKET_FACTORY_ADDRESS=${contracts.marketFactory.address}`,
   `VITE_BOUNTY_FACTORY_ADDRESS=${contracts.bountyFactory.address}`,
   `VITE_CHALLENGE_FACTORY_ADDRESS=${contracts.challengeFactory.address}`,

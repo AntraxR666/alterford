@@ -160,6 +160,7 @@ export interface ChallengeDTO {
   deadline?: string;
   state: ChallengeState;
   riskLevel: RiskLevel;
+  modeAffinity?: ModeAffinity;
   metadataURI?: string;
   rulesHash?: string;
   liveStreamURI?: string;
@@ -170,6 +171,12 @@ export interface ChallengeDTO {
   rewardPayout?: bigint;
   adminFee?: bigint;
   creatorFee?: bigint;
+  resolutionProposal?: {
+    proposer: Address;
+    executorSucceeded: boolean;
+    evidenceHash: string;
+    disputeDeadline: string;
+  };
 }
 
 export interface BountyDTO {
@@ -184,11 +191,18 @@ export interface BountyDTO {
   rewardEscrow: bigint;
   deadline: string;
   state: BountyState;
+  modeAffinity?: ModeAffinity;
+  riskLevel?: RiskLevel;
   metadataURI: string;
   rulesHash: string;
   winners?: readonly Address[];
   amounts?: readonly bigint[];
   lastReasonHash?: string;
+  submissions?: readonly {
+    submitter: Address;
+    submissionHash: string;
+    evidenceURI?: string;
+  }[];
 }
 
 export interface QuestDTO {
@@ -217,6 +231,7 @@ export interface ReputationDTO {
 export interface ContractAddresses {
   settlementToken: Address;
   creationBondPolicy: Address;
+  bondContextResolver?: Address;
   marketFactory: Address;
   bountyFactory?: Address;
   challengeFactory?: Address;

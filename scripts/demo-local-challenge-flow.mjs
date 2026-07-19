@@ -28,10 +28,11 @@ const executor = privateKeyToAccount(
 const deployment = JSON.parse(await readFile(resolve("deployments", "31337.json"), "utf8"));
 const tokenAbi = await readAbi("MockSettlementToken");
 const challengeAbi = await readAbi("ChallengeFactory");
-const bondPolicyAbi = await readAbi("CreationBondPolicy");
+const bondContextResolverAbi = await readAbi("CreationBondContextResolver");
 const token = deployment.contracts.settlementToken.address;
 const challengeFactory = deployment.contracts.challengeFactory.address;
 const bondPolicy = deployment.contracts.creationBondPolicy.address;
+const bondContextResolver = deployment.contracts.bondContextResolver.address;
 
 const publicClient = createPublicClient({ chain, transport: http(chain.rpcUrls.default.http[0]) });
 const creatorWallet = createWalletClient({ account: creator, chain, transport: http(chain.rpcUrls.default.http[0]) });
@@ -41,21 +42,12 @@ const chainId = await publicClient.getChainId();
 if (chainId !== 31337) throw new Error(`Expected Anvil chain 31337, got ${chainId}.`);
 
 const rewardPool = 100_000_000n;
-const bondContext = {
-  entityType: 2,
-  mode: 1,
-  creatorTier: 0,
-  categoryRisk: 2,
-  reputation: 0,
-  expectedVolume: rewardPool,
-  disputeCount: 1n,
-  fraudCount: 0n,
-};
+const categoryId = keccak256(toBytes("UNDERWORLD_CHALLENGE"));
 const [creatorBond] = await publicClient.readContract({
-  address: bondPolicy,
-  abi: bondPolicyAbi,
+  address: bondContextResolver,
+  abi: bondContextResolverAbi,
   functionName: "previewBond",
-  args: [bondContext],
+  args: [bondPolicy, creator.address, 2, categoryId, rewardPool],
 });
 const executorBond = creatorBond;
 
@@ -76,7 +68,7 @@ await tx(creatorWallet, challengeFactory, challengeAbi, "createChallenge", [
   keccak256(toBytes(`alterford-challenge-rules-${Date.now()}`)),
   "ipfs://alterford/demo-local-challenge",
   deadline,
-  bondContext,
+  categoryId,
 ]);
 
 const nextChallengeId = await publicClient.readContract({

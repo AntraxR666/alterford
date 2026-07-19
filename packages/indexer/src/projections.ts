@@ -88,6 +88,7 @@ export interface ChallengeEarlyResolutionProjection {
 export interface BountySubmissionProjection {
   submitter: Address;
   submissionHash: string;
+  evidenceURI?: string;
 }
 
 export interface BountyProjection {
@@ -319,11 +320,30 @@ export function projectEvent(state: ProjectionState, event: AlterfordEvent): Pro
         rewardEscrow: event.payload.rewardEscrow ?? event.payload.rewardPool,
         deadline: event.payload.deadline,
         state: event.payload.state ?? "Open",
+        categoryId: event.payload.categoryId,
+        modeAffinity: event.payload.modeAffinity,
+        riskLevel: event.payload.riskLevel,
         metadataURI: event.payload.metadataURI,
         rulesHash: event.payload.rulesHash,
         submissions: [],
       });
       break;
+    case "SubmissionEvidenceCreated": {
+      const bounty = state.bounties.get(event.payload.bountyId);
+      if (bounty) {
+        const submission = {
+          submitter: event.payload.submitter,
+          submissionHash: event.payload.submissionHash,
+          evidenceURI: event.payload.evidenceURI,
+        };
+        const existingIndex = bounty.submissions.findIndex(
+          (entry) => entry.submitter.toLowerCase() === event.payload.submitter.toLowerCase(),
+        );
+        if (existingIndex >= 0) bounty.submissions[existingIndex] = submission;
+        else bounty.submissions.push(submission);
+      }
+      break;
+    }
     case "SubmissionCreated": {
       const bounty = state.bounties.get(event.payload.bountyId);
       if (bounty) {

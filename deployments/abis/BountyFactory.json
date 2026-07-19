@@ -11,6 +11,11 @@
         "name": "initialBondPolicy",
         "type": "address",
         "internalType": "address"
+      },
+      {
+        "name": "initialBondContextResolver",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "stateMutability": "nonpayable"
@@ -140,6 +145,19 @@
   },
   {
     "type": "function",
+    "name": "bondContextResolver",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract CreationBondContextResolver"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "bondFinalized",
     "inputs": [
       {
@@ -215,6 +233,21 @@
         "name": "state",
         "type": "uint8",
         "internalType": "enum AlterfordTypes.BountyState"
+      },
+      {
+        "name": "categoryId",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "mode",
+        "type": "uint8",
+        "internalType": "enum AlterfordTypes.Mode"
+      },
+      {
+        "name": "riskLevel",
+        "type": "uint8",
+        "internalType": "enum AlterfordTypes.RiskLevel"
       }
     ],
     "stateMutability": "view"
@@ -267,51 +300,9 @@
         "internalType": "string"
       },
       {
-        "name": "bondContext",
-        "type": "tuple",
-        "internalType": "struct CreationBondPolicy.BondContext",
-        "components": [
-          {
-            "name": "entityType",
-            "type": "uint8",
-            "internalType": "enum AlterfordTypes.EntityType"
-          },
-          {
-            "name": "mode",
-            "type": "uint8",
-            "internalType": "enum AlterfordTypes.Mode"
-          },
-          {
-            "name": "creatorTier",
-            "type": "uint8",
-            "internalType": "enum AlterfordTypes.CreatorTier"
-          },
-          {
-            "name": "categoryRisk",
-            "type": "uint8",
-            "internalType": "enum AlterfordTypes.RiskLevel"
-          },
-          {
-            "name": "reputation",
-            "type": "uint8",
-            "internalType": "enum AlterfordTypes.ReputationBand"
-          },
-          {
-            "name": "expectedVolume",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "disputeCount",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "fraudCount",
-            "type": "uint256",
-            "internalType": "uint256"
-          }
-        ]
+        "name": "categoryId",
+        "type": "bytes32",
+        "internalType": "bytes32"
       }
     ],
     "outputs": [
@@ -468,6 +459,19 @@
   },
   {
     "type": "function",
+    "name": "setBondContextResolver",
+    "inputs": [
+      {
+        "name": "nextResolver",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "setBondPolicy",
     "inputs": [
       {
@@ -559,6 +563,30 @@
   },
   {
     "type": "function",
+    "name": "submissionURIByUser",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "submit",
     "inputs": [
       {
@@ -570,6 +598,29 @@
         "name": "submissionHash",
         "type": "bytes32",
         "internalType": "bytes32"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "submitEvidence",
+    "inputs": [
+      {
+        "name": "bountyId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "submissionHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "evidenceURI",
+        "type": "string",
+        "internalType": "string"
       }
     ],
     "outputs": [],
@@ -615,6 +666,25 @@
         "type": "uint16",
         "indexed": false,
         "internalType": "uint16"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "BondContextResolverUpdated",
+    "inputs": [
+      {
+        "name": "oldResolver",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "newResolver",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
       }
     ],
     "anonymous": false
@@ -777,6 +847,24 @@
         "type": "bytes32",
         "indexed": false,
         "internalType": "bytes32"
+      },
+      {
+        "name": "categoryId",
+        "type": "bytes32",
+        "indexed": false,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "mode",
+        "type": "uint8",
+        "indexed": false,
+        "internalType": "enum AlterfordTypes.Mode"
+      },
+      {
+        "name": "riskLevel",
+        "type": "uint8",
+        "indexed": false,
+        "internalType": "enum AlterfordTypes.RiskLevel"
       }
     ],
     "anonymous": false
@@ -933,6 +1021,37 @@
         "type": "bytes32",
         "indexed": false,
         "internalType": "bytes32"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "SubmissionEvidenceCreated",
+    "inputs": [
+      {
+        "name": "bountyId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "submitter",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "submissionHash",
+        "type": "bytes32",
+        "indexed": false,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "evidenceURI",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
       }
     ],
     "anonymous": false

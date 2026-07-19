@@ -194,6 +194,38 @@ describe("real Alterford log decoder", () => {
     );
   });
 
+  it("decodes reviewable bounty evidence URI from its on-chain event", async () => {
+    const log = encodedLog(
+      bountyFactoryAbi,
+      "SubmissionEvidenceCreated",
+      {
+        bountyId: 4n,
+        submitter: actor,
+        submissionHash: hash(7),
+        evidenceURI: "ipfs://bafy-evidence",
+      },
+      bountyFactory,
+    );
+
+    const decoded = await (listener as any).decodeAlterfordLog(
+      31337,
+      log,
+      { readContract: vi.fn() },
+      challengeFactory,
+      bountyFactory,
+    );
+
+    expect(decoded).toMatchObject({
+      type: "SubmissionEvidenceCreated",
+      payload: {
+        bountyId: "4",
+        submitter: actor,
+        submissionHash: hash(7),
+        evidenceURI: "ipfs://bafy-evidence",
+      },
+    });
+  });
+
   it("reads Challenge riskLevel from the extended getter", async () => {
     const client = {
       readContract: vi.fn().mockResolvedValue([

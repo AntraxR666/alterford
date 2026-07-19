@@ -62,16 +62,7 @@ const createHash = await creatorWallet.sendTransaction({
       lockTime,
       resolutionTime,
       0,
-      {
-        entityType: 0,
-        mode: 0,
-        creatorTier: 0,
-        categoryRisk: 0,
-        reputation: 0,
-        expectedVolume: 20_000_000n,
-        disputeCount: 0n,
-        fraudCount: 0n,
-      },
+      keccak256(toBytes("SPORTS")),
     ],
   }),
 });

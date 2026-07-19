@@ -5,8 +5,8 @@
   "deployer": "0x6Bb15228CFC4CA9f39FD76EA1dbF98A9E53be772",
   "securityCouncil": "0xcDe52A6D1c4bb32Aed4FA5C4489AbF32e237620b",
   "coldWallet": "0xec463C1CB5a8D4bf21B75505DAEccBC12C6E3bb7",
-  "deployedAt": "2026-07-15T08:37:47.135Z",
-  "startBlock": 44168185,
+  "deployedAt": "2026-07-17T02:13:36.417Z",
+  "startBlock": 44243058,
   "contracts": {
     "settlementToken": {
       "address": "0x13e136d971ab620d94213725bd5e14944f71427c",
@@ -20,34 +20,40 @@
       "artifact": "CreationBondPolicy.sol/CreationBondPolicy.json",
       "blockNumber": 43727911
     },
+    "bondContextResolver": {
+      "address": "0x813044d1fa11afbd649c7aade1d45405d1d2d427",
+      "txHash": "0xa50afc926bb24d9a2d89f42336d2c5784cadb076d5c57d8fab156e9281865a68",
+      "blockNumber": 44243058,
+      "artifact": "CreationBondContextResolver.sol/CreationBondContextResolver.json"
+    },
     "alterfordForwarder": {
-      "address": "0x5021948dea935437edc26241d3354ffba901100c",
-      "txHash": "0x9a9c04c55453fc90f56357335df3c606733be7acab6fa785282419f3ff8e7ede",
-      "blockNumber": 44168185,
+      "address": "0xd2261f40eac83e9cf43c3f624e3ab05a7128d246",
+      "txHash": "0xe7bd957d79f70fb08f13242bca237d1381ba75ab64a3b8421ba03c0553cad5c6",
+      "blockNumber": 44243059,
       "artifact": "AlterfordForwarder.sol/AlterfordForwarder.json"
     },
     "marketFactory": {
-      "address": "0x4810a24defe948b07950eced0426cce7a0cef540",
-      "txHash": "0x92b901e92beafe7cab7d928553be3f7fccaa1dc6de81268cbe595affbce0586d",
-      "blockNumber": 44168186,
+      "address": "0xf2ab2759341ff816cdee3c978b6923b79974ad82",
+      "txHash": "0x6c3fc1c4f587b87a43e61c0f1ba00df7290e49276b6a4813c558d7e5e4f1de9c",
+      "blockNumber": 44243060,
       "artifact": "MarketFactory.sol/MarketFactory.json"
     },
     "bountyFactory": {
-      "address": "0x7888a4924c1cf6ad72ff0e570c4285478b03c1f1",
-      "txHash": "0x5c96852fae8ccdfff8488bcc6d6c04d1a89f53e474631af531ae57575d6fbcb1",
-      "blockNumber": 44168190,
+      "address": "0x310eee740ede9623840651e3b04bfb5fc9b41d6d",
+      "txHash": "0xde2ef92ce22c8870b32e9b2b880a90df81d377fe4ca63ef59525887eeec8c2f8",
+      "blockNumber": 44243064,
       "artifact": "BountyFactory.sol/BountyFactory.json"
     },
     "challengeFactory": {
-      "address": "0x61ad203a2eafd95002e5558381ebd04954706edd",
-      "txHash": "0xd9c628be18ec31f7b68f0feaf33c8cd2a99354366919d8b900122c98bec89086",
-      "blockNumber": 44168188,
+      "address": "0xfef6b364e179311a90b970393a78c235f94445bf",
+      "txHash": "0x33922f4c2c9e28122193ed0ede17b86a40b9e88e880d95656066e125466acde4",
+      "blockNumber": 44243062,
       "artifact": "ChallengeFactory.sol/ChallengeFactory.json"
     },
     "bountyRecoveryVault": {
-      "address": "0x66f2baf2ce2b177cf80f98b81870dac484eb1b45",
-      "txHash": "0x27b5c0fbfaeea99b181e345729fd628e9b6b31f15b4f5fa5d909fb3fdb03ca5b",
-      "blockNumber": 44168189,
+      "address": "0x4449334ccc75e1c481530479ba0298b8cdf5100e",
+      "txHash": "0x27f0377d58f7088cdf6598f7ede5f665a0bf50160f94acd545359412f9242a2c",
+      "blockNumber": 44243063,
       "artifact": "BountyRecoveryVault.sol/BountyRecoveryVault.json"
     }
   }

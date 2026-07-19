@@ -6,6 +6,7 @@ import { BountyFactory } from "../src/factories/BountyFactory.sol";
 import { BountyRecoveryVault } from "../src/security/BountyRecoveryVault.sol";
 import { ChallengeFactory } from "../src/factories/ChallengeFactory.sol";
 import { CreationBondPolicy } from "../src/bonds/CreationBondPolicy.sol";
+import { CreationBondContextResolver } from "../src/bonds/CreationBondContextResolver.sol";
 import { AlterfordTypes } from "../src/libraries/AlterfordTypes.sol";
 import { MockSettlementToken } from "../src/token/MockSettlementToken.sol";
 
@@ -26,6 +27,15 @@ contract Phase1Actor {
 
     function submit(BountyFactory factory, uint256 bountyId, bytes32 submissionHash) external {
         factory.submit(bountyId, submissionHash);
+    }
+
+    function submitBountyEvidence(
+        BountyFactory factory,
+        uint256 bountyId,
+        bytes32 submissionHash,
+        string calldata evidenceURI
+    ) external {
+        factory.submitEvidence(bountyId, submissionHash, evidenceURI);
     }
 
     function accept(ChallengeFactory factory, uint256 challengeId) external {
@@ -110,7 +120,8 @@ contract Phase1SecurityTest {
     function testBountyEscrowsRewardPaysExactWinnersAndReturnsBond() public {
         MockSettlementToken token = new MockSettlementToken();
         CreationBondPolicy policy = new CreationBondPolicy(address(this));
-        BountyFactory factory = new BountyFactory(address(this), address(policy));
+        CreationBondContextResolver resolver = new CreationBondContextResolver(address(this));
+        BountyFactory factory = new BountyFactory(address(this), address(policy), address(resolver));
         Phase1Actor creator = new Phase1Actor();
         Phase1Actor winnerA = new Phase1Actor();
         Phase1Actor winnerB = new Phase1Actor();
@@ -140,9 +151,56 @@ contract Phase1SecurityTest {
         require(token.balanceOf(address(factory)) == 0, "bounty escrow remainder");
     }
 
+    function testBountySubmissionEvidencePersistsMatchingIpfsReference() public {
+        MockSettlementToken token = new MockSettlementToken();
+        CreationBondPolicy policy = new CreationBondPolicy(address(this));
+        CreationBondContextResolver resolver = new CreationBondContextResolver(address(this));
+        BountyFactory factory = new BountyFactory(address(this), address(policy), address(resolver));
+        Phase1Actor creator = new Phase1Actor();
+        Phase1Actor submitter = new Phase1Actor();
+
+        token.mint(address(creator), 25_000_000);
+        creator.approve(token, address(factory), 25_000_000);
+        uint256 bountyId = _createBounty(factory, token, creator, 20_000_000);
+        string memory evidenceURI = "ipfs://bafybeigdyrzt5evidence";
+        bytes32 evidenceHash = keccak256(bytes(evidenceURI));
+
+        submitter.submitBountyEvidence(factory, bountyId, evidenceHash, evidenceURI);
+
+        require(
+            factory.submissionHashByUser(bountyId, address(submitter)) == evidenceHash,
+            "evidence hash not stored"
+        );
+        require(
+            keccak256(bytes(factory.submissionURIByUser(bountyId, address(submitter))))
+                == evidenceHash,
+            "evidence URI not stored"
+        );
+    }
+
+    function testBountySubmissionEvidenceRejectsEmptyOrMismatchedReference() public {
+        MockSettlementToken token = new MockSettlementToken();
+        CreationBondPolicy policy = new CreationBondPolicy(address(this));
+        CreationBondContextResolver resolver = new CreationBondContextResolver(address(this));
+        BountyFactory factory = new BountyFactory(address(this), address(policy), address(resolver));
+        Phase1Actor creator = new Phase1Actor();
+        Phase1Actor submitter = new Phase1Actor();
+
+        token.mint(address(creator), 25_000_000);
+        creator.approve(token, address(factory), 25_000_000);
+        uint256 bountyId = _createBounty(factory, token, creator, 20_000_000);
+
+        vm.expectRevert(bytes4(keccak256("InvalidMetadataHash()")));
+        submitter.submitBountyEvidence(factory, bountyId, keccak256("other"), "ipfs://evidence");
+
+        vm.expectRevert(bytes4(keccak256("InvalidMetadataHash()")));
+        submitter.submitBountyEvidence(factory, bountyId, bytes32(0), "");
+    }
+
     function testBountyRejectsUnboundedWinnerFanout() public {
         CreationBondPolicy policy = new CreationBondPolicy(address(this));
-        BountyFactory factory = new BountyFactory(address(this), address(policy));
+        CreationBondContextResolver resolver = new CreationBondContextResolver(address(this));
+        BountyFactory factory = new BountyFactory(address(this), address(policy), address(resolver));
         address[] memory winners = new address[](101);
         uint256[] memory amounts = new uint256[](101);
 
@@ -155,7 +213,8 @@ contract Phase1SecurityTest {
         CreationBondPolicy policy = new CreationBondPolicy(address(this));
         address coldWallet = address(0xC01D);
         BountyRecoveryVault vault = new BountyRecoveryVault(address(this), coldWallet);
-        BountyFactory factory = new BountyFactory(address(this), address(policy));
+        CreationBondContextResolver resolver = new CreationBondContextResolver(address(this));
+        BountyFactory factory = new BountyFactory(address(this), address(policy), address(resolver));
         factory.setRecoveryVault(address(vault));
         Phase1Actor creator = new Phase1Actor();
         token.mint(address(creator), 25_000_000);
@@ -240,7 +299,8 @@ contract Phase1SecurityTest {
     {
         token = new MockSettlementToken();
         CreationBondPolicy policy = new CreationBondPolicy(address(this));
-        factory = new MarketFactory(address(this), address(policy));
+        CreationBondContextResolver resolver = new CreationBondContextResolver(address(this));
+        factory = new MarketFactory(address(this), address(policy), address(resolver));
         token.mint(address(this), 5_000_000);
         token.approve(address(factory), 5_000_000);
         string[] memory outcomes = new string[](2);
@@ -254,7 +314,7 @@ contract Phase1SecurityTest {
             block.timestamp + 1 days,
             block.timestamp + 2 days,
             AlterfordTypes.NoWinnersPolicy.RefundAll,
-            _bondContext(AlterfordTypes.EntityType.Market, AlterfordTypes.RiskLevel.Low, 20_000_000)
+            resolver.CATEGORY_SPORTS()
         );
     }
 
@@ -273,6 +333,7 @@ contract Phase1SecurityTest {
         Phase1Actor creator,
         uint256 rewardPool
     ) private returns (uint256 bountyId) {
+        bytes32 categoryId = factory.bondContextResolver().CATEGORY_VANILLA_BOUNTY();
         vm.prank(address(creator));
         bountyId = factory.createBounty(
             address(token),
@@ -280,7 +341,7 @@ contract Phase1SecurityTest {
             block.timestamp + 1 days,
             keccak256("bounty-rules"),
             "ipfs://bounty",
-            _bondContext(AlterfordTypes.EntityType.Bounty, AlterfordTypes.RiskLevel.Low, rewardPool)
+            categoryId
         );
     }
 
@@ -296,13 +357,18 @@ contract Phase1SecurityTest {
     {
         token = new MockSettlementToken();
         CreationBondPolicy policy = new CreationBondPolicy(address(this));
-        factory = new ChallengeFactory(address(this), address(policy), address(0xF0));
+        CreationBondContextResolver resolver = new CreationBondContextResolver(address(this));
+        factory =
+            new ChallengeFactory(address(this), address(policy), address(resolver), address(0xF0));
         creator = new Phase1Actor();
         executor = new Phase1Actor();
         token.mint(address(creator), rewardPool + 10_000_000);
         token.mint(address(executor), 10_000_000);
         creator.approve(token, address(factory), rewardPool + 10_000_000);
         executor.approve(token, address(factory), 10_000_000);
+        bytes32 categoryId = risk >= AlterfordTypes.RiskLevel.High
+            ? resolver.CATEGORY_UNDERWORLD_CHALLENGE()
+            : resolver.CATEGORY_VANILLA_CHALLENGE();
         vm.prank(address(creator));
         challengeId = factory.createChallenge(
             address(token),
@@ -310,7 +376,7 @@ contract Phase1SecurityTest {
             keccak256("challenge-rules"),
             "ipfs://challenge",
             block.timestamp + 1 days,
-            _bondContext(AlterfordTypes.EntityType.Challenge, risk, rewardPool)
+            categoryId
         );
         executor.accept(factory, challengeId);
     }

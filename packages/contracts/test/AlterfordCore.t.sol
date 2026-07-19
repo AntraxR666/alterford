@@ -6,6 +6,7 @@ import { RewardDistributor } from "../src/rewards/RewardDistributor.sol";
 import { ReferralEngine } from "../src/growth/ReferralEngine.sol";
 import { CampaignManager } from "../src/growth/CampaignManager.sol";
 import { CreationBondPolicy } from "../src/bonds/CreationBondPolicy.sol";
+import { CreationBondContextResolver } from "../src/bonds/CreationBondContextResolver.sol";
 import { MarketFactory } from "../src/factories/MarketFactory.sol";
 import { BountyFactory } from "../src/factories/BountyFactory.sol";
 import { AlterfordTypes } from "../src/libraries/AlterfordTypes.sol";
@@ -38,16 +39,7 @@ contract MarketUser {
             lockTime,
             resolutionTime,
             AlterfordTypes.NoWinnersPolicy.RefundAll,
-            CreationBondPolicy.BondContext({
-                entityType: AlterfordTypes.EntityType.Market,
-                mode: AlterfordTypes.Mode.Vanilla,
-                creatorTier: AlterfordTypes.CreatorTier.Basic,
-                categoryRisk: AlterfordTypes.RiskLevel.Low,
-                reputation: AlterfordTypes.ReputationBand.New,
-                expectedVolume: 20_000_000,
-                disputeCount: 0,
-                fraudCount: 0
-            })
+            factory.bondContextResolver().CATEGORY_SPORTS()
         );
     }
 
@@ -255,7 +247,8 @@ contract AlterfordCoreTest {
     function testMarketFactoryLocksReleasesAndSlashesDynamicBond() public {
         MockSettlementToken token = new MockSettlementToken();
         CreationBondPolicy policy = new CreationBondPolicy(address(this));
-        MarketFactory factory = new MarketFactory(address(this), address(policy));
+        CreationBondContextResolver resolver = new CreationBondContextResolver(address(this));
+        MarketFactory factory = new MarketFactory(address(this), address(policy), address(resolver));
         string[] memory outcomes = new string[](2);
         outcomes[0] = "YES";
         outcomes[1] = "NO";
@@ -270,16 +263,7 @@ contract AlterfordCoreTest {
             block.timestamp + 1 days,
             block.timestamp + 2 days,
             AlterfordTypes.NoWinnersPolicy.RefundAll,
-            CreationBondPolicy.BondContext({
-                entityType: AlterfordTypes.EntityType.Market,
-                mode: AlterfordTypes.Mode.Vanilla,
-                creatorTier: AlterfordTypes.CreatorTier.Basic,
-                categoryRisk: AlterfordTypes.RiskLevel.Low,
-                reputation: AlterfordTypes.ReputationBand.New,
-                expectedVolume: 20_000_000,
-                disputeCount: 0,
-                fraudCount: 0
-            })
+            resolver.CATEGORY_SPORTS()
         );
 
         require(factory.bondByMarket(marketId) == 500_000, "bond locked");
@@ -295,16 +279,7 @@ contract AlterfordCoreTest {
             block.timestamp + 1 days,
             block.timestamp + 2 days,
             AlterfordTypes.NoWinnersPolicy.RefundAll,
-            CreationBondPolicy.BondContext({
-                entityType: AlterfordTypes.EntityType.Market,
-                mode: AlterfordTypes.Mode.Vanilla,
-                creatorTier: AlterfordTypes.CreatorTier.Basic,
-                categoryRisk: AlterfordTypes.RiskLevel.Low,
-                reputation: AlterfordTypes.ReputationBand.New,
-                expectedVolume: 20_000_000,
-                disputeCount: 0,
-                fraudCount: 0
-            })
+            resolver.CATEGORY_SPORTS()
         );
         factory.confirmFraud(fraudMarketId, keccak256("fraud"));
         require(factory.bondByMarket(fraudMarketId) == 0, "bond slashed");
@@ -313,7 +288,8 @@ contract AlterfordCoreTest {
     function testBountyFactoryRequiresDynamicBondAllowance() public {
         MockSettlementToken token = new MockSettlementToken();
         CreationBondPolicy policy = new CreationBondPolicy(address(this));
-        BountyFactory factory = new BountyFactory(address(this), address(policy));
+        CreationBondContextResolver resolver = new CreationBondContextResolver(address(this));
+        BountyFactory factory = new BountyFactory(address(this), address(policy), address(resolver));
         token.mint(address(this), 1_000_000);
 
         try factory.createBounty(
@@ -322,16 +298,7 @@ contract AlterfordCoreTest {
             block.timestamp + 1 days,
             keccak256("rules"),
             "ipfs://rules",
-            CreationBondPolicy.BondContext({
-                entityType: AlterfordTypes.EntityType.Bounty,
-                mode: AlterfordTypes.Mode.Vanilla,
-                creatorTier: AlterfordTypes.CreatorTier.Basic,
-                categoryRisk: AlterfordTypes.RiskLevel.Low,
-                reputation: AlterfordTypes.ReputationBand.New,
-                expectedVolume: 20_000_000,
-                disputeCount: 0,
-                fraudCount: 0
-            })
+            resolver.CATEGORY_VANILLA_BOUNTY()
         ) {
             revert("bond transfer should fail without approval");
         } catch { }
@@ -340,7 +307,8 @@ contract AlterfordCoreTest {
     function testMarketEndToEndApproveBetResolveClaimAndExactFees() public {
         MockSettlementToken token = new MockSettlementToken();
         CreationBondPolicy policy = new CreationBondPolicy(address(this));
-        MarketFactory factory = new MarketFactory(address(this), address(policy));
+        CreationBondContextResolver resolver = new CreationBondContextResolver(address(this));
+        MarketFactory factory = new MarketFactory(address(this), address(policy), address(resolver));
         MarketUser creator = new MarketUser();
         MarketUser alice = new MarketUser();
         MarketUser bob = new MarketUser();
@@ -378,7 +346,8 @@ contract AlterfordCoreTest {
     function testMarketRefundsWhenResolvedOutcomeHasNoWinners() public {
         MockSettlementToken token = new MockSettlementToken();
         CreationBondPolicy policy = new CreationBondPolicy(address(this));
-        MarketFactory factory = new MarketFactory(address(this), address(policy));
+        CreationBondContextResolver resolver = new CreationBondContextResolver(address(this));
+        MarketFactory factory = new MarketFactory(address(this), address(policy), address(resolver));
         MarketUser creator = new MarketUser();
         MarketUser alice = new MarketUser();
 
@@ -410,7 +379,8 @@ contract AlterfordCoreTest {
     function testMarketRejectsInsufficientAllowanceInvalidAmountAndLockedBet() public {
         MockSettlementToken token = new MockSettlementToken();
         CreationBondPolicy policy = new CreationBondPolicy(address(this));
-        MarketFactory factory = new MarketFactory(address(this), address(policy));
+        CreationBondContextResolver resolver = new CreationBondContextResolver(address(this));
+        MarketFactory factory = new MarketFactory(address(this), address(policy), address(resolver));
         MarketUser creator = new MarketUser();
         MarketUser alice = new MarketUser();
 

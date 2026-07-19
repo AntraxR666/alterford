@@ -2,6 +2,7 @@
 pragma solidity ^0.8.28;
 
 import { CreationBondPolicy } from "../src/bonds/CreationBondPolicy.sol";
+import { CreationBondContextResolver } from "../src/bonds/CreationBondContextResolver.sol";
 import { ChallengeFactory } from "../src/factories/ChallengeFactory.sol";
 import { MarketFactory } from "../src/factories/MarketFactory.sol";
 import { AlterfordTypes } from "../src/libraries/AlterfordTypes.sol";
@@ -33,16 +34,10 @@ contract SmokeBaseSepoliaCreateBet {
         ISmokeSettlementToken settlementToken = ISmokeSettlementToken(token);
         CreationBondPolicy bondPolicy = CreationBondPolicy(bondPolicyAddress);
 
-        CreationBondPolicy.BondContext memory bondContext = CreationBondPolicy.BondContext({
-            entityType: AlterfordTypes.EntityType.Market,
-            mode: AlterfordTypes.Mode.Vanilla,
-            creatorTier: AlterfordTypes.CreatorTier.Basic,
-            categoryRisk: AlterfordTypes.RiskLevel.Low,
-            reputation: AlterfordTypes.ReputationBand.New,
-            expectedVolume: 20_000_000,
-            disputeCount: 0,
-            fraudCount: 0
-        });
+        CreationBondContextResolver resolver = marketFactory.bondContextResolver();
+        bytes32 categoryId = resolver.CATEGORY_SPORTS();
+        CreationBondPolicy.BondContext memory bondContext =
+            resolver.resolve(actor, AlterfordTypes.EntityType.Market, categoryId, 0);
         (uint256 requiredBond,) = bondPolicy.previewBond(bondContext);
         uint256 allowanceBudget = requiredBond + (BET_AMOUNT * 2);
         string[] memory outcomes = new string[](2);
@@ -60,7 +55,7 @@ contract SmokeBaseSepoliaCreateBet {
             block.timestamp + 90,
             block.timestamp + 120,
             AlterfordTypes.NoWinnersPolicy.RefundAll,
-            bondContext
+            categoryId
         );
         marketFactory.placeBet(marketId, 0, BET_AMOUNT);
         marketFactory.placeBet(marketId, 1, BET_AMOUNT);
@@ -98,16 +93,10 @@ contract SmokeBaseSepoliaChallengeCreateCancel {
         ISmokeSettlementToken settlementToken = ISmokeSettlementToken(token);
         CreationBondPolicy bondPolicy = CreationBondPolicy(bondPolicyAddress);
 
-        CreationBondPolicy.BondContext memory bondContext = CreationBondPolicy.BondContext({
-            entityType: AlterfordTypes.EntityType.Challenge,
-            mode: AlterfordTypes.Mode.Underworld,
-            creatorTier: AlterfordTypes.CreatorTier.Basic,
-            categoryRisk: AlterfordTypes.RiskLevel.High,
-            reputation: AlterfordTypes.ReputationBand.New,
-            expectedVolume: REWARD_POOL,
-            disputeCount: 1,
-            fraudCount: 0
-        });
+        CreationBondContextResolver resolver = challengeFactory.bondContextResolver();
+        bytes32 categoryId = resolver.CATEGORY_UNDERWORLD_CHALLENGE();
+        CreationBondPolicy.BondContext memory bondContext =
+            resolver.resolve(actor, AlterfordTypes.EntityType.Challenge, categoryId, REWARD_POOL);
         (uint256 requiredBond,) = bondPolicy.previewBond(bondContext);
         uint256 allowanceBudget = requiredBond + REWARD_POOL;
 
@@ -122,7 +111,7 @@ contract SmokeBaseSepoliaChallengeCreateCancel {
             ),
             "ipfs://alterford/base-sepolia-challenge-smoke",
             block.timestamp + 1 days,
-            bondContext
+            categoryId
         );
         challengeFactory.cancelChallenge(challengeId, keccak256("smoke-cancel"));
         VM.stopBroadcast();

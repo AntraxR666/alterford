@@ -363,6 +363,17 @@ export async function decodeAlterfordLog(
             submissionHash: args.submissionHash as string,
           },
         };
+      case "SubmissionEvidenceCreated":
+        return {
+          ...base,
+          type: "SubmissionEvidenceCreated",
+          payload: {
+            bountyId: String(args.bountyId),
+            submitter: args.submitter as Address,
+            submissionHash: args.submissionHash as string,
+            evidenceURI: args.evidenceURI as string,
+          },
+        };
       case "BountyResolved":
         return {
           ...base,

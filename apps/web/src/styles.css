@@ -554,7 +554,7 @@ button {
 
 .app-tabs {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
   margin-bottom: 16px;
 }
@@ -1134,6 +1134,98 @@ button {
   gap: 10px;
 }
 
+.permission-card-wrap {
+  grid-column: span 2;
+}
+
+.permission-card-wrap > .info-card {
+  height: 100%;
+}
+
+.approval-mode-control {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 8px;
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.approval-mode-control button {
+  min-height: 42px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.approval-mode-control button.selected {
+  border-color: rgba(15, 118, 110, 0.32);
+  background: #ffffff;
+  color: #0f766e;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+}
+
+.permission-list {
+  display: grid;
+  gap: 0;
+  border-top: 1px solid rgba(15, 23, 42, 0.1);
+}
+
+.permission-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.1);
+}
+
+.permission-row > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.permission-row > div:first-child strong {
+  font-size: 15px;
+}
+
+.permission-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.permission-actions button {
+  min-height: 38px;
+}
+
+.permission-ready {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #15803d;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.underworld .approval-mode-control,
+.underworld .permission-list,
+.underworld .permission-row {
+  border-color: rgba(45, 212, 191, 0.2);
+}
+
+.underworld .approval-mode-control {
+  background: rgba(8, 15, 23, 0.75);
+}
+
+.underworld .approval-mode-control button.selected {
+  border-color: rgba(45, 212, 191, 0.55);
+  background: #07151a;
+  color: #5eead4;
+}
+
 .info-card strong {
   font-size: 24px;
   overflow-wrap: anywhere;
@@ -1643,6 +1735,118 @@ button {
   color: #475569;
 }
 
+.lifecycle-countdown {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 28px;
+  align-items: center;
+  border: 1px solid rgba(8, 145, 178, 0.24);
+  border-radius: 6px;
+  background: rgba(236, 254, 255, 0.88);
+  padding: 4px 8px;
+  color: #155e75;
+  font-size: 12px;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+}
+
+.lifecycle-countdown.high {
+  border-color: rgba(225, 29, 72, 0.34);
+  background: rgba(255, 241, 242, 0.96);
+  color: #9f1239;
+}
+
+.first-run-intro {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(280px, 1fr) minmax(220px, 0.7fr);
+  gap: 22px;
+  align-items: center;
+  border: 1px solid #cbd5e1;
+  border-left: 4px solid #0891b2;
+  background: #ffffff;
+  padding: 20px 22px;
+}
+
+.first-run-intro h2,
+.first-run-intro p {
+  margin: 0;
+}
+
+.first-run-intro h2 {
+  margin-bottom: 7px;
+  font-size: 26px;
+  letter-spacing: 0;
+}
+
+.first-run-intro ol {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.first-run-intro li {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.first-run-intro li strong {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border-radius: 50%;
+  background: #0e7490;
+  color: white;
+  font-size: 12px;
+}
+
+.intro-action {
+  display: grid;
+  gap: 10px;
+}
+
+.intro-action span {
+  color: #475569;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.icon-text-button {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  gap: 7px;
+}
+
+.underworld .lifecycle-countdown {
+  border-color: rgba(34, 211, 238, 0.32);
+  background: rgba(8, 47, 73, 0.58);
+  color: #a5f3fc;
+  text-shadow: 0 0 10px rgba(34, 211, 238, 0.28);
+}
+
+.underworld .lifecycle-countdown.high {
+  border-color: rgba(251, 113, 133, 0.55);
+  background: rgba(76, 5, 25, 0.75);
+  color: #fecdd3;
+  box-shadow: 0 0 16px rgba(244, 63, 94, 0.12);
+}
+
+.underworld .first-run-intro {
+  border-color: rgba(244, 63, 94, 0.42);
+  border-left-color: #f43f5e;
+  background: rgba(5, 8, 16, 0.96);
+  color: #e2e8f0;
+}
+
+.underworld .first-run-intro li strong {
+  background: #be123c;
+}
+
 .history-panel {
   margin-top: 18px;
   border: 1px solid rgba(100, 116, 139, 0.25);
@@ -1686,6 +1890,94 @@ button {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.role-notice,
+.builder-stage {
+  display: grid;
+  gap: 5px;
+  border-left: 3px solid #0891b2;
+  background: rgba(8, 145, 178, 0.08);
+  padding: 10px 12px;
+}
+
+.role-notice {
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: start;
+}
+
+.role-notice > div {
+  display: grid;
+  gap: 3px;
+}
+
+.role-notice > div,
+.builder-stage {
+  line-height: 1.4;
+}
+
+.role-notice span,
+.builder-stage span {
+  color: #475569;
+  font-size: 12px;
+}
+
+.execution-mode {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+.execution-mode button {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.execution-mode button.selected {
+  border-color: #0891b2;
+  background: #0891b2;
+  color: white;
+}
+
+.challenge-builder select {
+  width: 100%;
+  min-height: 44px;
+}
+
+.underworld .role-notice,
+.underworld .builder-stage {
+  border-left-color: #22d3ee;
+  background: rgba(8, 47, 73, 0.38);
+}
+
+.underworld .role-notice span,
+.underworld .builder-stage span {
+  color: #cbd5e1;
+}
+
+.underworld .execution-mode button.selected {
+  border-color: #22d3ee;
+  background: rgba(8, 47, 73, 0.86);
+  color: #a5f3fc;
+}
+
+.underworld .execution-mode button {
+  border-color: rgba(100, 116, 139, 0.35);
+  background: rgba(15, 23, 42, 0.9);
+  color: #cbd5e1;
+}
+
+.underworld .execution-mode button:disabled {
+  opacity: 0.48;
+}
+
+.underworld .challenge-builder select {
+  border-color: rgba(34, 211, 238, 0.28);
+  background: #070b13;
+  color: #e2e8f0;
+}
+
 .operator-market-list {
   display: grid;
   gap: 10px;
@@ -1703,6 +1995,10 @@ button {
 .operator-market > div:first-child {
   display: grid;
   gap: 5px;
+}
+
+.participant-resolution-list .operator-market {
+  grid-template-columns: 1fr;
 }
 
 .operator-outcome {
@@ -1832,6 +2128,221 @@ button {
   background: rgba(8, 47, 73, 0.42);
 }
 
+.workflow-page {
+  display: grid;
+  gap: 14px;
+}
+
+.workflow-navigation {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid #dbe4ee;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.workflow-navigation button {
+  min-height: 62px;
+  display: grid;
+  gap: 3px;
+  align-content: center;
+  text-align: left;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #334155;
+}
+
+.workflow-navigation button span {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.workflow-navigation button.active {
+  border-color: #0f766e;
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 2px 8px rgba(15, 118, 110, 0.1);
+}
+
+.workflow-progress {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 5px;
+  padding: 0;
+  margin: 4px 0 14px;
+  list-style: none;
+}
+
+.workflow-progress li {
+  min-width: 0;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  color: #94a3b8;
+  font-size: 11px;
+  text-align: center;
+}
+
+.workflow-progress li strong {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #cbd5e1;
+  border-radius: 50%;
+  background: #ffffff;
+}
+
+.workflow-progress li.complete,
+.workflow-progress li.current {
+  color: #0f766e;
+}
+
+.workflow-progress li.complete strong {
+  border-color: #0f766e;
+  background: #ccfbf1;
+}
+
+.workflow-progress li.current strong {
+  border-width: 2px;
+  border-color: #0f766e;
+}
+
+.next-action-callout,
+.guided-transaction {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid #99f6e4;
+  border-left: 4px solid #0f766e;
+  border-radius: 6px;
+  background: #f0fdfa;
+}
+
+.next-action-callout > span {
+  color: #0f766e;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.next-action-callout p,
+.guided-transaction span {
+  margin: 0;
+  color: #475569;
+}
+
+.evidence-uploader {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+}
+
+.evidence-file-field {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 8px;
+}
+
+.evidence-file-field input {
+  grid-column: 1 / -1;
+}
+
+.selected-file,
+.submission-list > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.selected-file button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.upload-success {
+  color: #0f766e;
+  font-weight: 700;
+}
+
+.upload-error {
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+.submission-list {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #cbd5e1;
+}
+
+.underworld .evidence-uploader,
+.underworld .submission-list {
+  border-color: rgba(34, 211, 238, 0.28);
+  background: rgba(2, 6, 23, 0.78);
+}
+
+.underworld .workflow-navigation {
+  border-color: rgba(34, 211, 238, 0.25);
+  background: rgba(2, 6, 23, 0.82);
+}
+
+.underworld .workflow-navigation button {
+  color: #cbd5e1;
+}
+
+.underworld .workflow-navigation button span {
+  color: #94a3b8;
+}
+
+.underworld .workflow-navigation button.active {
+  border-color: #22d3ee;
+  background: rgba(8, 47, 73, 0.58);
+  color: #ecfeff;
+}
+
+.underworld .workflow-progress li.complete,
+.underworld .workflow-progress li.current {
+  color: #67e8f9;
+}
+
+.underworld .workflow-progress li strong {
+  border-color: #475569;
+  background: #0f172a;
+}
+
+.underworld .workflow-progress li.complete strong,
+.underworld .workflow-progress li.current strong {
+  border-color: #22d3ee;
+  background: #083344;
+}
+
+.underworld .next-action-callout,
+.underworld .guided-transaction {
+  border-color: rgba(34, 211, 238, 0.35);
+  border-left-color: #f43f5e;
+  background: rgba(8, 47, 73, 0.42);
+}
+
+.underworld .next-action-callout > span,
+.underworld .next-action-callout strong,
+.underworld .guided-transaction strong {
+  color: #cffafe;
+}
+
+.underworld .next-action-callout p,
+.underworld .guided-transaction span {
+  color: #cbd5e1;
+}
+
 @media (max-width: 760px) {
   .operator-market {
     grid-template-columns: 1fr;
@@ -1839,6 +2350,14 @@ button {
 
   .guided-actions {
     grid-template-columns: 1fr;
+  }
+
+  .workflow-navigation {
+    grid-template-columns: 1fr;
+  }
+
+  .workflow-navigation button {
+    min-height: 52px;
   }
 }
 
@@ -1850,6 +2369,10 @@ button {
 }
 
 @media (max-width: 980px) {
+  .first-run-intro {
+    grid-template-columns: 1fr;
+  }
+
   .app-header,
   .network-warning {
     align-items: stretch;
@@ -1898,15 +2421,19 @@ button {
   .amount-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .workflow-progress li span {
+    font-size: 10px;
+  }
+
+  .permission-card-wrap {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (max-width: 520px) {
   .app-shell {
     padding: 12px;
-  }
-
-  .app-tabs {
-    grid-template-columns: 1fr;
   }
 
   .status-item,
@@ -1918,5 +2445,14 @@ button {
   .challenge-builder,
   .info-card {
     padding: 14px;
+  }
+
+  .approval-mode-control,
+  .permission-row {
+    grid-template-columns: 1fr;
+  }
+
+  .permission-actions {
+    justify-content: flex-start;
   }
 }

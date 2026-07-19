@@ -7,6 +7,7 @@ import { AlterfordTypes } from "../libraries/AlterfordTypes.sol";
 import { AlterfordErrors } from "../libraries/AlterfordErrors.sol";
 import { FeePolicy } from "../libraries/FeePolicy.sol";
 import { CreationBondPolicy } from "../bonds/CreationBondPolicy.sol";
+import { CreationBondContextResolver } from "../bonds/CreationBondContextResolver.sol";
 import { IERC20 } from "../token/IERC20.sol";
 import { ERC2771Context } from "@openzeppelin/contracts/metatx/ERC2771Context.sol";
 
@@ -23,6 +24,8 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite, ERC2771Context {
         AlterfordTypes.ChallengeState state;
         bytes32 evidenceHash;
         string evidenceURI;
+        bytes32 categoryId;
+        AlterfordTypes.Mode mode;
         AlterfordTypes.RiskLevel riskLevel;
     }
 
@@ -43,6 +46,7 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite, ERC2771Context {
 
     uint256 public nextChallengeId = 1;
     CreationBondPolicy public bondPolicy;
+    CreationBondContextResolver public bondContextResolver;
     uint64 public standardResolutionWindow = MAX_STANDARD_RESOLUTION_WINDOW;
     mapping(uint256 => Challenge) public challenges;
     mapping(uint256 => uint256) public bondByChallenge;
@@ -54,7 +58,13 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite, ERC2771Context {
     mapping(uint256 => uint256) public disputeBondByChallenge;
 
     event ChallengeCreated(
-        uint256 indexed challengeId, address indexed creator, uint256 rewardPool, bytes32 rulesHash
+        uint256 indexed challengeId,
+        address indexed creator,
+        uint256 rewardPool,
+        bytes32 rulesHash,
+        bytes32 categoryId,
+        AlterfordTypes.Mode mode,
+        AlterfordTypes.RiskLevel riskLevel
     );
     event ChallengeAccepted(
         uint256 indexed challengeId, address indexed executor, uint256 executorBond
@@ -108,6 +118,7 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite, ERC2771Context {
         uint256 indexed challengeId, bool executorSucceeded, bytes32 reasonHash
     );
     event BondPolicyUpdated(address indexed oldPolicy, address indexed newPolicy);
+    event BondContextResolverUpdated(address indexed oldResolver, address indexed newResolver);
     event BondCalculated(
         bytes32 indexed entityType,
         uint256 indexed entityId,
@@ -131,14 +142,27 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite, ERC2771Context {
         bytes32 indexed entityType, uint256 indexed entityId, uint256 amount, bytes32 reasonHash
     );
 
-    constructor(address initialAdmin, address initialBondPolicy, address trustedForwarder)
-        Governed(initialAdmin)
-        ERC2771Context(trustedForwarder)
-    {
-        if (initialBondPolicy == address(0)) revert AlterfordErrors.InvalidBondPolicy();
+    constructor(
+        address initialAdmin,
+        address initialBondPolicy,
+        address initialBondContextResolver,
+        address trustedForwarder
+    ) Governed(initialAdmin) ERC2771Context(trustedForwarder) {
+        if (initialBondPolicy == address(0) || initialBondContextResolver == address(0)) {
+            revert AlterfordErrors.InvalidBondPolicy();
+        }
         if (trustedForwarder == address(0)) revert AlterfordErrors.Unauthorized();
         bondPolicy = CreationBondPolicy(initialBondPolicy);
+        bondContextResolver = CreationBondContextResolver(initialBondContextResolver);
         emit BondPolicyUpdated(address(0), initialBondPolicy);
+        emit BondContextResolverUpdated(address(0), initialBondContextResolver);
+    }
+
+    function setBondContextResolver(address nextResolver) external onlyRole(GOVERNOR_ROLE) {
+        if (nextResolver == address(0)) revert AlterfordErrors.InvalidBondPolicy();
+        address oldResolver = address(bondContextResolver);
+        bondContextResolver = CreationBondContextResolver(nextResolver);
+        emit BondContextResolverUpdated(oldResolver, nextResolver);
     }
 
     function setBondPolicy(address nextBondPolicy) external onlyRole(GOVERNOR_ROLE) {
@@ -164,15 +188,15 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite, ERC2771Context {
         bytes32 rulesHash,
         string calldata metadataURI,
         uint256 deadline,
-        CreationBondPolicy.BondContext calldata bondContext
+        bytes32 categoryId
     ) external nonReentrant whenNotPaused returns (uint256 challengeId) {
         if (settlementToken == address(0)) revert AlterfordErrors.InvalidToken();
         if (rewardPool == 0) revert AlterfordErrors.InvalidAmount();
         if (rulesHash == bytes32(0)) revert AlterfordErrors.InvalidMetadataHash();
         if (deadline <= block.timestamp) revert AlterfordErrors.InvalidAmount();
-        if (bondContext.entityType != AlterfordTypes.EntityType.Challenge) {
-            revert AlterfordErrors.InvalidBondPolicy();
-        }
+        CreationBondPolicy.BondContext memory bondContext = bondContextResolver.resolve(
+            _actor(), AlterfordTypes.EntityType.Challenge, categoryId, rewardPool
+        );
         uint256 maxDuration = _isHighRiskOrValue(rewardPool, bondContext.categoryRisk)
             ? HIGH_RISK_RESOLUTION_WINDOW
             : MAX_STANDARD_RESOLUTION_WINDOW;
@@ -195,6 +219,8 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite, ERC2771Context {
             state: AlterfordTypes.ChallengeState.Open,
             evidenceHash: bytes32(0),
             evidenceURI: "",
+            categoryId: categoryId,
+            mode: bondContext.mode,
             riskLevel: bondContext.categoryRisk
         });
         bondByChallenge[challengeId] = requiredBond;
@@ -205,7 +231,15 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite, ERC2771Context {
 
         emit BondCalculated("Challenge", challengeId, _actor(), requiredBond, reasonFlags);
         emit BondLocked("Challenge", challengeId, _actor(), requiredBond);
-        emit ChallengeCreated(challengeId, _actor(), rewardPool, rulesHash);
+        emit ChallengeCreated(
+            challengeId,
+            _actor(),
+            rewardPool,
+            rulesHash,
+            categoryId,
+            bondContext.mode,
+            bondContext.categoryRisk
+        );
     }
 
     function acceptChallenge(uint256 challengeId, string calldata liveStreamURI)

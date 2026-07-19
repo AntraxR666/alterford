@@ -6,6 +6,19 @@ function item(abi: readonly any[], type: string, name: string) {
 }
 
 describe("phase 1 resilience ABIs", () => {
+  it("does not accept caller-supplied creator reputation in creation functions", () => {
+    const marketCreate = item((sdk as any).marketFactoryAbi, "function", "createMarket");
+    const bountyCreate = item((sdk as any).bountyFactoryAbi, "function", "createBounty");
+    const challengeCreate = item((sdk as any).challengeFactoryAbi, "function", "createChallenge");
+
+    expect(marketCreate.inputs.at(-1)).toMatchObject({ name: "categoryId", type: "bytes32" });
+    expect(bountyCreate.inputs.at(-1)).toMatchObject({ name: "categoryId", type: "bytes32" });
+    expect(challengeCreate.inputs.at(-1)).toMatchObject({ name: "categoryId", type: "bytes32" });
+    expect([marketCreate, bountyCreate, challengeCreate].some((entry) =>
+      entry.inputs.some((input: any) => input.name === "bondContext"),
+    )).toBe(false);
+  });
+
   it("exposes signed bet functions and events", () => {
     const abi = (sdk as any).marketFactoryAbi as readonly any[];
 
@@ -42,8 +55,22 @@ describe("phase 1 resilience ABIs", () => {
       "rulesHash",
       "metadataURI",
       "state",
+      "categoryId",
+      "mode",
+      "riskLevel",
     ]);
     expect(item(abi, "function", "rewardEscrowByBounty")?.outputs[0].type).toBe("uint256");
+    expect(item(abi, "function", "submitEvidence")?.inputs.map((input: any) => input.type)).toEqual([
+      "uint256",
+      "bytes32",
+      "string",
+    ]);
+    expect(item(abi, "event", "SubmissionEvidenceCreated")?.inputs.map((input: any) => input.type)).toEqual([
+      "uint256",
+      "address",
+      "bytes32",
+      "string",
+    ]);
     expect(item(abi, "function", "resolveBounty")?.inputs.map((input: any) => input.type)).toEqual([
       "uint256",
       "address[]",

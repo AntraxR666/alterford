@@ -2,6 +2,8 @@ import {
   BASE_SEPOLIA_CHAIN_ID,
   buildXmrConversionAuthorization,
   buildForwardRequestTypedData,
+  bountyBondCategoryId,
+  bountyFactoryAbi,
   challengeBondCategoryId,
   challengeFactoryAbi,
   creationBondContextResolverAbi,
@@ -15,7 +17,7 @@ import {
   type TxLifecycle,
   type XmrConversionAuthorization,
 } from "@alterford/sdk";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { encodeFunctionData, formatEther, keccak256, toBytes, type Address, type Hex } from "viem";
 import {
   useAccount,
@@ -31,8 +33,20 @@ import {
 } from "wagmi";
 import { configuredAddresses, configuredChainId, hasCoreAddresses } from "../web3/contracts";
 import { targetChain } from "../web3/config";
-import { readableSwitchError, readableTransactionError, type WalletKind } from "../web3/transactionErrors";
-import { AlterfordGatewayClient, waitForRelay } from "../web3/gatewayClient";
+import { approvalTarget } from "../web3/approvalPolicy";
+import { ensureProviderChain } from "../web3/chainSwitch";
+import {
+  missingNativeGasMessage,
+  readableSwitchError,
+  readableTransactionError,
+  type WalletKind,
+} from "../web3/transactionErrors";
+import type { ApprovalMode } from "../stores/appStore";
+import {
+  AlterfordGatewayClient,
+  isRelayConfigCompatible,
+  waitForRelay,
+} from "../web3/gatewayClient";
 
 interface TxState {
   status: TxLifecycle;
@@ -40,6 +54,8 @@ interface TxState {
   hash?: Hex;
   error?: string;
 }
+
+export type ChallengeExecutionMode = "wallet" | "gasless";
 
 interface EthereumProvider {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
@@ -65,6 +81,21 @@ export interface ChallengeActionInput {
   challengeId: string;
   liveStreamURI?: string;
   evidenceURI?: string;
+  reason?: string;
+}
+
+export interface CreateBountyInput {
+  title: string;
+  description: string;
+  rewardPool: bigint;
+  deadlineMinutes: number;
+}
+
+export interface BountyActionInput {
+  bountyId: string;
+  evidenceURI?: string;
+  winner?: Address;
+  rewardPool?: bigint;
   reason?: string;
 }
 
@@ -107,6 +138,10 @@ export function useWeb3Flow(
   marketCategory: string,
   challengeBondEstimate: CreationBondEstimate = bondEstimate,
   challengeRewardPool: bigint = 0n,
+  bountyBondEstimate: CreationBondEstimate = bondEstimate,
+  bountyRewardPool: bigint = 0n,
+  isBountyUnderworld = false,
+  approvalMode: ApprovalMode = "smart",
 ) {
   const account = useAccount();
   const chainId = useChainId();
@@ -117,6 +152,8 @@ export function useWeb3Flow(
   const { writeContractAsync } = useWriteContract();
   const { signTypedDataAsync } = useSignTypedData();
   const [tx, setTx] = useState<TxState>({ status: "idle", label: "Ready" });
+  const [challengeExecutionMode, setChallengeExecutionMode] = useState<ChallengeExecutionMode>("wallet");
+  const [gaslessChallengesAvailable, setGaslessChallengesAvailable] = useState(false);
   const [marketId, setMarketId] = useState("1");
   const [selectedOutcome, setSelectedOutcome] = useState<0 | 1>(0);
 
@@ -130,15 +167,16 @@ export function useWeb3Flow(
       : null,
     [],
   );
-  const gaslessChallengesAvailable = Boolean(
-    gateway && addresses.alterfordForwarder && addresses.challengeFactory,
-  );
   const onTargetChain = chainId === desiredChainId;
   const marketCategoryId = useMemo(
     () => marketBondCategoryId(marketCategory, isUnderworldMode),
     [isUnderworldMode, marketCategory],
   );
-  const challengeCategoryId = useMemo(() => challengeBondCategoryId(true), []);
+  const challengeCategoryId = useMemo(
+    () => challengeBondCategoryId(isUnderworldMode),
+    [isUnderworldMode],
+  );
+  const bountyCategoryId = useMemo(() => bountyBondCategoryId(isBountyUnderworld), [isBountyUnderworld]);
 
   const marketBondPreview = useReadContract({
     address: addresses.bondContextResolver,
@@ -181,17 +219,44 @@ export function useWeb3Flow(
     },
   });
 
+  const bountyBondPreview = useReadContract({
+    address: addresses.bondContextResolver,
+    abi: creationBondContextResolverAbi,
+    functionName: "previewBond",
+    args:
+      account.address && addresses.creationBondPolicy
+        ? [addresses.creationBondPolicy, account.address, 1, bountyCategoryId, bountyRewardPool]
+        : undefined,
+    chainId: desiredChainId,
+    query: {
+      enabled: Boolean(
+        account.address
+          && bountyRewardPool > 0n
+          && addresses.creationBondPolicy
+          && addresses.bondContextResolver,
+      ),
+    },
+  });
+
   const resolvedBondEstimate = mergeOnchainBondEstimate(bondEstimate, marketBondPreview.data);
   const resolvedChallengeBondEstimate = mergeOnchainBondEstimate(
     challengeBondEstimate,
     challengeBondPreview.data,
   );
+  const resolvedBountyBondEstimate = mergeOnchainBondEstimate(bountyBondEstimate, bountyBondPreview.data);
   const requiredApproval = resolvedBondEstimate.amount + quickBetAmount;
   const challengeRequiredApproval = resolvedChallengeBondEstimate.amount + challengeRewardPool;
   const createMarketCost = resolvedBondEstimate.amount;
   const betCost = quickBetAmount;
   const challengeCreateCost = challengeRequiredApproval;
   const challengeExecutorCost = resolvedChallengeBondEstimate.amount;
+  const bountyCreateCost = resolvedBountyBondEstimate.amount + bountyRewardPool;
+  const marketApprovalTarget = approvalTarget(requiredApproval, approvalMode);
+  const marketCreateApprovalTarget = approvalTarget(createMarketCost, approvalMode);
+  const betApprovalTarget = approvalTarget(betCost, approvalMode);
+  const challengeApprovalTarget = approvalTarget(challengeRequiredApproval, approvalMode);
+  const challengeExecutorApprovalTarget = approvalTarget(challengeExecutorCost, approvalMode);
+  const bountyApprovalTarget = approvalTarget(bountyCreateCost, approvalMode);
 
   const balance = useReadContract({
     address: addresses.settlementToken,
@@ -230,6 +295,18 @@ export function useWeb3Flow(
         : undefined,
     chainId: desiredChainId,
     query: { enabled: Boolean(account.address && addresses.settlementToken && addresses.challengeFactory) },
+  });
+
+  const bountyAllowance = useReadContract({
+    address: addresses.settlementToken,
+    abi: erc20Abi,
+    functionName: "allowance",
+    args:
+      account.address && addresses.bountyFactory
+        ? [account.address, addresses.bountyFactory]
+        : undefined,
+    chainId: desiredChainId,
+    query: { enabled: Boolean(account.address && addresses.settlementToken && addresses.bountyFactory) },
   });
 
   const resolverRole = useReadContract({
@@ -272,10 +349,45 @@ export function useWeb3Flow(
     query: { enabled: Boolean(addresses.challengeFactory && account.address && arbiterRole.data) },
   });
 
+  const bountyResolverRole = useReadContract({
+    address: addresses.bountyFactory,
+    abi: governedRoleAbi,
+    functionName: "RESOLVER_ROLE",
+    chainId: desiredChainId,
+    query: { enabled: Boolean(addresses.bountyFactory) },
+  });
+
+  const hasBountyResolverRole = useReadContract({
+    address: addresses.bountyFactory,
+    abi: governedRoleAbi,
+    functionName: "hasRole",
+    args: account.address && bountyResolverRole.data ? [bountyResolverRole.data, account.address] : undefined,
+    chainId: desiredChainId,
+    query: { enabled: Boolean(addresses.bountyFactory && account.address && bountyResolverRole.data) },
+  });
+
+  const bountyArbiterRole = useReadContract({
+    address: addresses.bountyFactory,
+    abi: governedRoleAbi,
+    functionName: "ARBITER_ROLE",
+    chainId: desiredChainId,
+    query: { enabled: Boolean(addresses.bountyFactory) },
+  });
+
+  const hasBountyArbiterRole = useReadContract({
+    address: addresses.bountyFactory,
+    abi: governedRoleAbi,
+    functionName: "hasRole",
+    args: account.address && bountyArbiterRole.data ? [bountyArbiterRole.data, account.address] : undefined,
+    chainId: desiredChainId,
+    query: { enabled: Boolean(addresses.bountyFactory && account.address && bountyArbiterRole.data) },
+  });
+
   const currentBalance = (balance.data as bigint | undefined) ?? 0n;
   const currentNativeBalance = nativeBalance.data?.value ?? 0n;
   const currentAllowance = (allowance.data as bigint | undefined) ?? 0n;
   const currentChallengeAllowance = (challengeAllowance.data as bigint | undefined) ?? 0n;
+  const currentBountyAllowance = (bountyAllowance.data as bigint | undefined) ?? 0n;
   const needsApproval = currentAllowance < requiredApproval;
   const needsChallengeApproval = currentChallengeAllowance < challengeRequiredApproval;
   const hasEnoughBalance = currentBalance >= requiredApproval;
@@ -286,6 +398,8 @@ export function useWeb3Flow(
   const hasEnoughBetBalance = currentBalance >= betCost;
   const needsChallengeExecutorApproval = currentChallengeAllowance < challengeExecutorCost;
   const hasEnoughChallengeExecutorBalance = currentBalance >= challengeExecutorCost;
+  const needsBountyApproval = currentBountyAllowance < bountyCreateCost;
+  const hasEnoughBountyBalance = currentBalance >= bountyCreateCost;
   const spendPreview = {
     createMarket: bondEstimate.amount,
     placeBet: quickBetAmount,
@@ -295,6 +409,36 @@ export function useWeb3Flow(
   const preferredConnectorName = hasInjectedProvider ? "wallet" : "WalletConnect";
   const socialConnector = connectors.find((item) => item.id === "web3auth");
   const hasSocialLogin = Boolean(socialConnector);
+
+  useEffect(() => {
+    const forwarder = addresses.alterfordForwarder;
+    const challengeFactory = addresses.challengeFactory;
+    if (!gateway || !forwarder || !challengeFactory) {
+      setGaslessChallengesAvailable(false);
+      setChallengeExecutionMode("wallet");
+      return;
+    }
+    let active = true;
+    gateway.config()
+      .then((config) => {
+        if (!active) return;
+        const available = isRelayConfigCompatible(config, {
+          chainId: desiredChainId,
+          challengeFactory,
+          forwarder,
+        });
+        setGaslessChallengesAvailable(available);
+        if (!available) setChallengeExecutionMode("wallet");
+      })
+      .catch(() => {
+        if (!active) return;
+        setGaslessChallengesAvailable(false);
+        setChallengeExecutionMode("wallet");
+      });
+    return () => {
+      active = false;
+    };
+  }, [addresses.alterfordForwarder, addresses.challengeFactory, desiredChainId, gateway]);
 
   async function connectWallet() {
     const connector = hasInjectedProvider
@@ -321,6 +465,11 @@ export function useWeb3Flow(
       return true;
     } catch (error) {
       if (walletKind === "embedded") {
+        const provider = await providerFromConnector(account.connector);
+        if (await ensureProviderChain(provider, targetChainId, targetChain)) {
+          setTx({ status: "confirmed", label: `Red activa: ${targetChain.name}` });
+          return true;
+        }
         setTx({
           status: "failed",
           label: `Cambiar a ${targetChain.name}`,
@@ -356,6 +505,14 @@ export function useWeb3Flow(
       setTx({ status: "failed", label, error: "RPC client unavailable. Check network configuration." });
       return;
     }
+    if (currentNativeBalance <= 0n) {
+      setTx({
+        status: "failed",
+        label,
+        error: missingNativeGasMessage({ walletKind, targetChainName: targetChain.name }),
+      });
+      return;
+    }
 
     try {
       if (!onTargetChain) {
@@ -367,11 +524,13 @@ export function useWeb3Flow(
       setTx({ status: "pending", label, hash });
       await publicClient.waitForTransactionReceipt({ hash });
       setTx({ status: "confirmed", label, hash });
+      notifyChainUpdated();
       await Promise.allSettled([
         balance.refetch(),
         nativeBalance.refetch(),
         allowance.refetch(),
         challengeAllowance.refetch(),
+        bountyAllowance.refetch(),
       ]);
     } catch (error) {
       setTx({ status: "failed", label, error: readableTransactionError(error, { walletKind, targetChainName: targetChain.name }) });
@@ -383,10 +542,19 @@ export function useWeb3Flow(
     data: Hex,
     directAction: (contracts: ContractAddresses) => Promise<Hex>,
   ) {
+    if (challengeExecutionMode === "wallet") {
+      await runTx(label, directAction);
+      return;
+    }
     const forwarder = addresses.alterfordForwarder;
     const challengeFactory = addresses.challengeFactory;
-    if (!gateway || !forwarder || !challengeFactory) {
-      await runTx(label, directAction);
+    if (!gaslessChallengesAvailable || !gateway || !forwarder || !challengeFactory) {
+      setChallengeExecutionMode("wallet");
+      setTx({
+        status: "failed",
+        label: `${label}: patrocinio no disponible`,
+        error: "No se firmo ni se movieron fondos. Alterford cambio a modo Wallet para el siguiente intento.",
+      });
       return;
     }
     if (!contractsReady || !account.address || !publicClient) {
@@ -428,15 +596,38 @@ export function useWeb3Flow(
       const result = await waitForRelay(gateway, submission.taskId);
       if (result.state !== "confirmed") throw new Error("El relay no pudo ejecutar la accion.");
       setTx({ status: "confirmed", label: `${label}: confirmado sin gas`, hash: result.transactionHash });
+      notifyChainUpdated();
       await Promise.allSettled([
         balance.refetch(),
         nativeBalance.refetch(),
         allowance.refetch(),
         challengeAllowance.refetch(),
+        bountyAllowance.refetch(),
       ]);
     } catch (error) {
-      setTx({ status: "failed", label, error: readableTransactionError(error, { walletKind, targetChainName: targetChain.name }) });
+      const detail = readableTransactionError(error, { walletKind, targetChainName: targetChain.name });
+      const relayStillPending = /sigue pendiente/i.test(detail);
+      if (!relayStillPending) setChallengeExecutionMode("wallet");
+      setTx({
+        status: "failed",
+        label: relayStillPending ? `${label}: relay pendiente` : `${label}: firma sin gas no ejecutada`,
+        error: relayStillPending
+          ? detail
+          : `${detail} No se movieron aUSDT. El siguiente intento usara una transaccion Wallet normal.`,
+      });
     }
+  }
+
+  function selectChallengeExecutionMode(mode: ChallengeExecutionMode) {
+    if (mode === "gasless" && !gaslessChallengesAvailable) {
+      setTx({
+        status: "failed",
+        label: "Patrocinio no disponible",
+        error: "El gateway no confirmo patrocinio para este deployment. Usa Wallet; no se movieron fondos.",
+      });
+      return;
+    }
+    setChallengeExecutionMode(mode);
   }
 
   function guardedTx(label: string, checks: Array<[boolean, string]>, send: () => void) {
@@ -448,26 +639,30 @@ export function useWeb3Flow(
     send();
   }
 
-  const approveSettlement = () =>
-    runTx("Autorizar uso de aUSDT", (contracts) =>
+  const approveMarketAmount = (amount: bigint, label: string) =>
+    runTx(label, (contracts) =>
       writeContractAsync({
         address: contracts.settlementToken,
         abi: erc20Abi,
         functionName: "approve",
         chainId: desiredChainId,
-        args: [contracts.marketFactory, requiredApproval],
+        args: [contracts.marketFactory, amount],
       }),
     );
 
+  const approveSettlement = () => approveMarketAmount(marketApprovalTarget, "Autorizar mercados");
+  const approveMarketCreation = () => approveMarketAmount(marketCreateApprovalTarget, "Autorizar creacion de mercado");
+  const approveBetSettlement = () => approveMarketAmount(betApprovalTarget, "Autorizar predicciones");
+
   const approveChallengeSettlement = () =>
-    runTx("Autorizar retos Underworld", (contracts) => {
+    runTx(`Autorizar reto ${isUnderworldMode ? "Underworld" : "Vanilla"}`, (contracts) => {
       if (!contracts.challengeFactory) throw new Error("ChallengeFactory is not configured for this network.");
       return writeContractAsync({
         address: contracts.settlementToken,
         abi: erc20Abi,
         functionName: "approve",
         chainId: desiredChainId,
-        args: [contracts.challengeFactory, challengeRequiredApproval],
+        args: [contracts.challengeFactory, challengeApprovalTarget],
       });
     });
 
@@ -479,7 +674,7 @@ export function useWeb3Flow(
         abi: erc20Abi,
         functionName: "approve",
         chainId: desiredChainId,
-        args: [contracts.challengeFactory, challengeExecutorCost],
+        args: [contracts.challengeFactory, challengeExecutorApprovalTarget],
       });
     });
 
@@ -497,7 +692,43 @@ export function useWeb3Flow(
         abi: erc20Abi,
         functionName: "approve",
         chainId: desiredChainId,
-        args: [contracts.challengeFactory, disputeBond as bigint],
+        args: [contracts.challengeFactory, approvalTarget(disputeBond as bigint, approvalMode)],
+      });
+    });
+
+  const approveBountySettlement = () =>
+    runTx("Autorizar bounty", (contracts) => {
+      if (!contracts.bountyFactory) throw new Error("BountyFactory is not configured for this network.");
+      return writeContractAsync({
+        address: contracts.settlementToken,
+        abi: erc20Abi,
+        functionName: "approve",
+        chainId: desiredChainId,
+        args: [contracts.bountyFactory, bountyApprovalTarget],
+      });
+    });
+
+  const revokeMarketApproval = () => approveMarketAmount(0n, "Revocar permiso de mercados");
+  const revokeChallengeApproval = () =>
+    runTx("Revocar permiso de retos", (contracts) => {
+      if (!contracts.challengeFactory) throw new Error("ChallengeFactory is not configured for this network.");
+      return writeContractAsync({
+        address: contracts.settlementToken,
+        abi: erc20Abi,
+        functionName: "approve",
+        chainId: desiredChainId,
+        args: [contracts.challengeFactory, 0n],
+      });
+    });
+  const revokeBountyApproval = () =>
+    runTx("Revocar permiso de bounties", (contracts) => {
+      if (!contracts.bountyFactory) throw new Error("BountyFactory is not configured for this network.");
+      return writeContractAsync({
+        address: contracts.settlementToken,
+        abi: erc20Abi,
+        functionName: "approve",
+        chainId: desiredChainId,
+        args: [contracts.bountyFactory, 0n],
       });
     });
 
@@ -544,17 +775,18 @@ export function useWeb3Flow(
       }),
     );
 
+  const createChallengeLabel = isUnderworldMode ? "Crear reto Underworld" : "Crear reto Vanilla";
   const createChallenge = (input: CreateChallengeInput) =>
     guardedTx(
-      "Crear reto Underworld",
+      createChallengeLabel,
       [
         [hasEnoughChallengeBalance, `Necesitas ${formatUsdt(challengeCreateCost)} aUSDT para recompensa + bond.`],
-        [!needsChallengeApproval, "Primero autoriza aUSDT para retos Underworld."],
+        [!needsChallengeApproval, `Primero autoriza aUSDT para el reto ${isUnderworldMode ? "Underworld" : "Vanilla"}.`],
       ],
       () => {
       const challengeFactory = addresses.challengeFactory;
       if (!challengeFactory || !addresses.settlementToken) throw new Error("ChallengeFactory is not configured for this network.");
-      const metadataURI = buildChallengeMetadataURI(input);
+      const metadataURI = buildChallengeMetadataURI(input, isUnderworldMode);
       const metadataSeed = `${input.title}-${input.evidence}-${input.stakeUsdt.toString()}-${Date.now()}`;
       const highRiskOrValue =
         input.stakeUsdt >= 1_000_000_000n || input.riskLevel === "High" || input.riskLevel === "Critical";
@@ -570,7 +802,7 @@ export function useWeb3Flow(
         ),
         challengeCategoryId,
       ] as const;
-      return runChallengeTx("Crear reto Underworld", encodeFunctionData({
+      return runChallengeTx(createChallengeLabel, encodeFunctionData({
         abi: challengeFactoryAbi,
         functionName: "createChallenge",
         args,
@@ -582,6 +814,94 @@ export function useWeb3Flow(
         args,
       }));
       },
+    );
+
+  const createBounty = (input: CreateBountyInput) =>
+    guardedTx(
+      "Crear bounty",
+      [
+        [input.rewardPool > 0n, "La recompensa debe ser mayor que cero."],
+        [hasEnoughBountyBalance, `Necesitas ${formatUsdt(bountyCreateCost)} aUSDT para recompensa + bond.`],
+        [!needsBountyApproval, "Primero prepara el permiso de aUSDT para este bounty."],
+      ],
+      () => runTx("Crear bounty", (contracts) => {
+        if (!contracts.bountyFactory) throw new Error("BountyFactory is not configured for this network.");
+        const metadataURI = buildBountyMetadataURI(input, isBountyUnderworld);
+        const rulesHash = keccak256(toBytes(`${input.title}-${input.description}-${Date.now()}`));
+        return writeContractAsync({
+          address: contracts.bountyFactory,
+          abi: bountyFactoryAbi,
+          functionName: "createBounty",
+          chainId: desiredChainId,
+          args: [
+            contracts.settlementToken,
+            input.rewardPool,
+            BigInt(Math.floor(Date.now() / 1_000) + Math.max(60, input.deadlineMinutes) * 60),
+            rulesHash,
+            metadataURI,
+            bountyCategoryId,
+          ],
+        });
+      }),
+    );
+
+  const submitBounty = (input: BountyActionInput) =>
+    guardedTx(
+      "Enviar propuesta al bounty",
+      [[Boolean(input.evidenceURI?.trim()), "Añade una URL o referencia de evidencia antes de enviar."]],
+      () => runTx("Enviar propuesta al bounty", (contracts) => {
+        if (!contracts.bountyFactory) throw new Error("BountyFactory is not configured for this network.");
+        return writeContractAsync({
+          address: contracts.bountyFactory,
+          abi: bountyFactoryAbi,
+          functionName: "submitEvidence",
+          chainId: desiredChainId,
+          args: [
+            BigInt(input.bountyId || "1"),
+            keccak256(toBytes(input.evidenceURI!.trim())),
+            input.evidenceURI!.trim(),
+          ],
+        });
+      }),
+    );
+
+  const resolveBounty = (input: BountyActionInput) =>
+    guardedTx(
+      "Resolver bounty",
+      [
+        [hasBountyResolverRole.data === true, "Esta wallet no tiene RESOLVER_ROLE para bounties."],
+        [Boolean(input.winner), "Selecciona una direccion ganadora valida."],
+        [Boolean(input.rewardPool && input.rewardPool > 0n), "El payout debe ser mayor que cero."],
+      ],
+      () => runTx("Resolver bounty", (contracts) => {
+        if (!contracts.bountyFactory) throw new Error("BountyFactory is not configured for this network.");
+        return writeContractAsync({
+          address: contracts.bountyFactory,
+          abi: bountyFactoryAbi,
+          functionName: "resolveBounty",
+          chainId: desiredChainId,
+          args: [BigInt(input.bountyId || "1"), [input.winner!], [input.rewardPool!]],
+        });
+      }),
+    );
+
+  const cancelBounty = (input: BountyActionInput) =>
+    guardedTx(
+      "Cancelar bounty",
+      [[hasBountyArbiterRole.data === true, "Esta wallet no tiene ARBITER_ROLE para bounties."]],
+      () => runTx("Cancelar bounty", (contracts) => {
+        if (!contracts.bountyFactory) throw new Error("BountyFactory is not configured for this network.");
+        return writeContractAsync({
+          address: contracts.bountyFactory,
+          abi: bountyFactoryAbi,
+          functionName: "cancelBounty",
+          chainId: desiredChainId,
+          args: [
+            BigInt(input.bountyId || "1"),
+            keccak256(toBytes(input.reason?.trim() || "operator-cancel")),
+          ],
+        });
+      }),
     );
 
   const acceptChallenge = (input: ChallengeActionInput) =>
@@ -856,20 +1176,30 @@ export function useWeb3Flow(
     onTargetChain,
     contractsReady,
     gaslessChallengesAvailable,
+    challengeExecutionMode,
     isMarketResolver: hasResolverRole.data === true,
     isChallengeArbiter: hasArbiterRole.data === true,
+    isBountyResolver: hasBountyResolverRole.data === true,
+    isBountyArbiter: hasBountyArbiterRole.data === true,
     bondEstimate: resolvedBondEstimate,
     challengeBondEstimate: resolvedChallengeBondEstimate,
+    bountyBondEstimate: resolvedBountyBondEstimate,
     addresses,
     balance: currentBalance,
     allowance: currentAllowance,
     challengeAllowance: currentChallengeAllowance,
+    bountyAllowance: currentBountyAllowance,
     requiredApproval,
     challengeRequiredApproval,
+    marketApprovalTarget,
+    challengeApprovalTarget,
+    bountyApprovalTarget,
     needsApproval,
     needsChallengeApproval,
     hasEnoughBalance,
     hasEnoughChallengeBalance,
+    needsBountyApproval,
+    hasEnoughBountyBalance,
     needsCreateApproval,
     hasEnoughCreateBalance,
     needsBetApproval,
@@ -884,15 +1214,26 @@ export function useWeb3Flow(
     setSelectedOutcome,
     connectWallet,
     connectSocialWallet,
+    selectChallengeExecutionMode,
     disconnect,
     switchToTargetChain,
     approveSettlement,
+    approveMarketCreation,
+    approveBetSettlement,
     approveChallengeSettlement,
     approveChallengeExecutorBond,
     approveChallengeDispute,
+    approveBountySettlement,
+    revokeMarketApproval,
+    revokeChallengeApproval,
+    revokeBountyApproval,
     mintTestTokens,
     createMarket,
     createChallenge,
+    createBounty,
+    submitBounty,
+    resolveBounty,
+    cancelBounty,
     acceptChallenge,
     updateChallengeLiveStream,
     submitChallengeEvidence,
@@ -913,7 +1254,12 @@ export function useWeb3Flow(
     balanceLabel: `${formatUsdt(currentBalance)} aUSDT`,
     allowanceLabel: `${formatUsdt(currentAllowance)} aUSDT`,
     challengeAllowanceLabel: `${formatUsdt(currentChallengeAllowance)} aUSDT`,
+    bountyAllowanceLabel: `${formatUsdt(currentBountyAllowance)} aUSDT`,
+    marketApprovalTargetLabel: `${formatUsdt(marketApprovalTarget)} aUSDT`,
+    challengeApprovalTargetLabel: `${formatUsdt(challengeApprovalTarget)} aUSDT`,
+    bountyApprovalTargetLabel: `${formatUsdt(bountyApprovalTarget)} aUSDT`,
     challengeTotalCostLabel: `${formatUsdt(challengeRequiredApproval)} aUSDT`,
+    bountyTotalCostLabel: `${formatUsdt(bountyCreateCost)} aUSDT`,
     createCostLabel: `${formatUsdt(resolvedBondEstimate.amount)} aUSDT bond`,
     betCostLabel: `${formatUsdt(quickBetAmount)} aUSDT`,
   };
@@ -932,15 +1278,24 @@ function mergeOnchainBondEstimate(
   };
 }
 
-function buildChallengeMetadataURI(input: CreateChallengeInput): string {
+function buildChallengeMetadataURI(input: CreateChallengeInput, underworld: boolean): string {
   const params = new URLSearchParams({
-    title: input.title.trim() || "Reto Underworld",
+    title: input.title.trim() || `Reto ${underworld ? "Underworld" : "Vanilla"}`,
     evidence: input.evidence.trim() || "Evidencia pendiente",
     live: input.liveStreamURI?.trim() || "",
-    mode: "Underworld",
+    mode: underworld ? "Underworld" : "Vanilla",
     description: "Reto creado por usuario en Alterford.",
   });
   return `alterford://challenge?${params.toString()}`;
+}
+
+function buildBountyMetadataURI(input: CreateBountyInput, underworld: boolean): string {
+  const params = new URLSearchParams({
+    title: input.title.trim() || "Bounty Alterford",
+    description: input.description.trim() || "Entrega verificable requerida.",
+    mode: underworld ? "Underworld" : "Vanilla",
+  });
+  return `alterford://bounty?${params.toString()}`;
 }
 
 async function switchWithInjectedFallback(chainId: number) {
@@ -976,6 +1331,10 @@ async function switchWithInjectedFallback(chainId: number) {
   }
 }
 
+function notifyChainUpdated() {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("alterford:chain-updated"));
+}
+
 function getErrorCode(error: unknown): number | undefined {
   if (typeof error !== "object" || error === null) return undefined;
   const maybe = error as { code?: unknown; cause?: unknown };
@@ -996,4 +1355,12 @@ function buildMarketMetadataURI(input: CreateMarketInput | undefined, isUnderwor
     description: "Mercado creado por usuarios en Alterford.",
   });
   return `alterford://market?${params.toString()}`;
+}
+
+async function providerFromConnector(connector: { getProvider?: (() => Promise<unknown>) | undefined } | undefined) {
+  if (!connector?.getProvider) return null;
+  const provider = await connector.getProvider();
+  return provider && typeof provider === "object" && "request" in provider
+    ? provider as EthereumProvider
+    : null;
 }

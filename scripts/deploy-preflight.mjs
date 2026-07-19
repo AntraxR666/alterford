@@ -48,6 +48,8 @@ const settlementTokenAddress =
   chainConfig.settlementTokenAddress || existingDeployment?.contracts?.settlementToken?.address;
 const creationBondPolicyAddress =
   chainConfig.creationBondPolicyAddress || existingDeployment?.contracts?.creationBondPolicy?.address;
+const securityCouncil = chainConfig.securityCouncil || existingDeployment?.securityCouncil;
+const coldWallet = chainConfig.coldWallet || existingDeployment?.coldWallet;
 if (chainName === "base-sepolia") {
   record("foundry_account_present", Boolean(chainConfig.accountName), { required: true });
   record("keystore_password_file_present", Boolean(chainConfig.passwordFile) || process.env.ALLOW_INTERACTIVE_KEYSTORE === "1", {
@@ -61,17 +63,17 @@ if (chainName === "base-sepolia") {
       record("foundry_account_valid", false, { error: errorMessage(error) });
     }
   }
-  record("security_council_valid", isAddress(chainConfig.securityCouncil ?? ""), {
-    address: chainConfig.securityCouncil,
+  record("security_council_valid", isAddress(securityCouncil ?? ""), {
+    address: securityCouncil,
   });
-  record("cold_wallet_valid", isAddress(chainConfig.coldWallet ?? ""), {
-    address: chainConfig.coldWallet,
+  record("cold_wallet_valid", isAddress(coldWallet ?? ""), {
+    address: coldWallet,
   });
   record(
     "security_council_is_not_cold_wallet",
-    isAddress(chainConfig.securityCouncil ?? "")
-      && isAddress(chainConfig.coldWallet ?? "")
-      && chainConfig.securityCouncil.toLowerCase() !== chainConfig.coldWallet.toLowerCase(),
+    isAddress(securityCouncil ?? "")
+      && isAddress(coldWallet ?? "")
+      && securityCouncil.toLowerCase() !== coldWallet.toLowerCase(),
   );
   record("settlement_token_reuse_address", isAddress(settlementTokenAddress ?? ""), {
     address: settlementTokenAddress,
@@ -92,6 +94,7 @@ if (chainName === "base-sepolia") {
 for (const artifact of [
   "MockSettlementToken",
   "CreationBondPolicy",
+  "CreationBondContextResolver",
   "AlterfordForwarder",
   "MarketFactory",
   "BountyFactory",

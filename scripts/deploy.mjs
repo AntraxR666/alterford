@@ -67,12 +67,22 @@ async function main() {
 
   const settlementToken = await deploy("MockSettlementToken");
   const creationBondPolicy = await deploy("CreationBondPolicy", [account.address]);
+  const bondContextResolver = await deploy("CreationBondContextResolver", [account.address]);
   const alterfordForwarder = await deploy("AlterfordForwarder");
-  const marketFactory = await deploy("MarketFactory", [account.address, creationBondPolicy.address]);
-  const bountyFactory = await deploy("BountyFactory", [account.address, creationBondPolicy.address]);
+  const marketFactory = await deploy("MarketFactory", [
+    account.address,
+    creationBondPolicy.address,
+    bondContextResolver.address,
+  ]);
+  const bountyFactory = await deploy("BountyFactory", [
+    account.address,
+    creationBondPolicy.address,
+    bondContextResolver.address,
+  ]);
   const challengeFactory = await deploy("ChallengeFactory", [
     account.address,
     creationBondPolicy.address,
+    bondContextResolver.address,
     alterfordForwarder.address,
   ]);
   const bountyRecoveryVault = await deploy("BountyRecoveryVault", [account.address, account.address]);
@@ -96,6 +106,7 @@ async function main() {
     startBlock: minBlockNumber([
       settlementToken,
       creationBondPolicy,
+      bondContextResolver,
       alterfordForwarder,
       marketFactory,
       bountyFactory,
@@ -105,6 +116,7 @@ async function main() {
     contracts: {
       settlementToken,
       creationBondPolicy,
+      bondContextResolver,
       alterfordForwarder,
       marketFactory,
       bountyFactory,
@@ -189,13 +201,15 @@ async function deployWithFoundryKeystore() {
   const creationBondPolicyAddress =
     chainConfig.creationBondPolicyAddress
     || previousDeployment?.contracts?.creationBondPolicy?.address;
+  const securityCouncil = chainConfig.securityCouncil || previousDeployment?.securityCouncil;
+  const coldWallet = chainConfig.coldWallet || previousDeployment?.coldWallet;
   if (!settlementTokenAddress || !creationBondPolicyAddress) {
     throw new Error(
       "SETTLEMENT_TOKEN_ADDRESS and CREATION_BOND_POLICY_ADDRESS are required when no previous Base Sepolia deployment exists.",
     );
   }
-  if (!chainConfig.securityCouncil || !chainConfig.coldWallet) {
-    throw new Error("SECURITY_COUNCIL_ADDRESS and COLD_WALLET_ADDRESS are required for Base Sepolia.");
+  if (!securityCouncil || !coldWallet) {
+    throw new Error("SECURITY_COUNCIL_ADDRESS and COLD_WALLET_ADDRESS are required when no previous Base Sepolia deployment exists.");
   }
   const forgeArgs = [
     "script",
@@ -205,8 +219,8 @@ async function deployWithFoundryKeystore() {
     deployer,
     settlementTokenAddress,
     creationBondPolicyAddress,
-    chainConfig.securityCouncil,
-    chainConfig.coldWallet,
+    securityCouncil,
+    coldWallet,
     "--rpc-url",
     chainConfig.rpcUrl,
     "--chain-id",
@@ -245,10 +259,11 @@ async function deployWithFoundryKeystore() {
     chainName: chainConfig.name,
     rpcUrl: deploymentRpcUrl(chainConfig.id, chainConfig.rpcUrl),
     deployer,
-    securityCouncil: chainConfig.securityCouncil,
-    coldWallet: chainConfig.coldWallet,
+    securityCouncil,
+    coldWallet,
     deployedAt: new Date().toISOString(),
     startBlock: minBlockNumber([
+      contracts.bondContextResolver,
       contracts.alterfordForwarder,
       contracts.marketFactory,
       contracts.bountyFactory,
@@ -289,6 +304,7 @@ async function readFoundryBroadcast(chainId, client, reusedContracts = {}) {
   const required = [
     ["settlementToken", "MockSettlementToken"],
     ["creationBondPolicy", "CreationBondPolicy"],
+    ["bondContextResolver", "CreationBondContextResolver"],
     ["alterfordForwarder", "AlterfordForwarder"],
     ["marketFactory", "MarketFactory"],
     ["bountyFactory", "BountyFactory"],

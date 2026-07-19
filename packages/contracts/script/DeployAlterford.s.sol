@@ -2,6 +2,7 @@
 pragma solidity ^0.8.28;
 
 import { CreationBondPolicy } from "../src/bonds/CreationBondPolicy.sol";
+import { CreationBondContextResolver } from "../src/bonds/CreationBondContextResolver.sol";
 import { BountyFactory } from "../src/factories/BountyFactory.sol";
 import { ChallengeFactory } from "../src/factories/ChallengeFactory.sol";
 import { MarketFactory } from "../src/factories/MarketFactory.sol";
@@ -32,10 +33,14 @@ contract DeployAlterford {
         CreationBondPolicy creationBondPolicy = creationBondPolicyAddress == address(0)
             ? new CreationBondPolicy(admin)
             : CreationBondPolicy(creationBondPolicyAddress);
+        CreationBondContextResolver bondContextResolver = new CreationBondContextResolver(admin);
         AlterfordForwarder forwarder = new AlterfordForwarder();
-        new MarketFactory(admin, address(creationBondPolicy));
-        BountyFactory bountyFactory = new BountyFactory(admin, address(creationBondPolicy));
-        new ChallengeFactory(admin, address(creationBondPolicy), address(forwarder));
+        new MarketFactory(admin, address(creationBondPolicy), address(bondContextResolver));
+        BountyFactory bountyFactory =
+            new BountyFactory(admin, address(creationBondPolicy), address(bondContextResolver));
+        new ChallengeFactory(
+            admin, address(creationBondPolicy), address(bondContextResolver), address(forwarder)
+        );
         BountyRecoveryVault recoveryVault = new BountyRecoveryVault(securityCouncil, coldWallet);
         bountyFactory.setRecoveryVault(address(recoveryVault));
 
