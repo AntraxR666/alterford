@@ -1,6 +1,13 @@
 export const erc20Abi = [
   {
     type: "function",
+    name: "name",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "string" }],
+  },
+  {
+    type: "function",
     name: "allowance",
     stateMutability: "view",
     inputs: [
@@ -18,6 +25,13 @@ export const erc20Abi = [
       { name: "amount", type: "uint256" },
     ],
     outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    type: "function",
+    name: "nonces",
+    stateMutability: "view",
+    inputs: [{ name: "owner", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
   },
   {
     type: "function",
@@ -64,12 +78,46 @@ export const marketFactoryAbi = [
   },
   {
     type: "function",
+    name: "createMarketWithPermit",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "settlementToken", type: "address" },
+      { name: "metadataHash", type: "bytes32" },
+      { name: "metadataURI", type: "string" },
+      { name: "outcomes", type: "string[]" },
+      { name: "lockTime", type: "uint256" },
+      { name: "resolutionTime", type: "uint256" },
+      { name: "noWinnersPolicy", type: "uint8" },
+      { name: "categoryId", type: "bytes32" },
+      { name: "permitData", type: "tuple", components: [
+        { name: "value", type: "uint256" }, { name: "deadline", type: "uint256" },
+        { name: "v", type: "uint8" }, { name: "r", type: "bytes32" }, { name: "s", type: "bytes32" },
+      ] },
+    ],
+    outputs: [{ name: "marketId", type: "uint256" }],
+  },
+  {
+    type: "function",
     name: "placeBet",
     stateMutability: "nonpayable",
     inputs: [
       { name: "marketId", type: "uint256" },
       { name: "outcome", type: "uint8" },
       { name: "amount", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "placeBetWithPermit",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "marketId", type: "uint256" }, { name: "outcome", type: "uint8" },
+      { name: "amount", type: "uint256" },
+      { name: "permitData", type: "tuple", components: [
+        { name: "value", type: "uint256" }, { name: "deadline", type: "uint256" },
+        { name: "v", type: "uint8" }, { name: "r", type: "bytes32" }, { name: "s", type: "bytes32" },
+      ] },
     ],
     outputs: [],
   },
@@ -409,11 +457,39 @@ export const challengeFactoryAbi = [
   },
   {
     type: "function",
+    name: "createChallengeWithPermit",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "settlementToken", type: "address" }, { name: "rewardPool", type: "uint256" },
+      { name: "rulesHash", type: "bytes32" }, { name: "metadataURI", type: "string" },
+      { name: "deadline", type: "uint256" }, { name: "categoryId", type: "bytes32" },
+      { name: "permitData", type: "tuple", components: [
+        { name: "value", type: "uint256" }, { name: "deadline", type: "uint256" },
+        { name: "v", type: "uint8" }, { name: "r", type: "bytes32" }, { name: "s", type: "bytes32" },
+      ] },
+    ],
+    outputs: [{ name: "challengeId", type: "uint256" }],
+  },
+  {
+    type: "function",
     name: "acceptChallenge",
     stateMutability: "nonpayable",
     inputs: [
       { name: "challengeId", type: "uint256" },
       { name: "liveStreamURI", type: "string" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "acceptChallengeWithPermit",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "challengeId", type: "uint256" }, { name: "liveStreamURI", type: "string" },
+      { name: "permitData", type: "tuple", components: [
+        { name: "value", type: "uint256" }, { name: "deadline", type: "uint256" },
+        { name: "v", type: "uint8" }, { name: "r", type: "bytes32" }, { name: "s", type: "bytes32" },
+      ] },
     ],
     outputs: [],
   },
@@ -717,6 +793,21 @@ export const bountyFactoryAbi = [
       { name: "rulesHash", type: "bytes32" },
       { name: "metadataURI", type: "string" },
       { name: "categoryId", type: "bytes32" },
+    ],
+    outputs: [{ name: "bountyId", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "createBountyWithPermit",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "settlementToken", type: "address" }, { name: "rewardPool", type: "uint256" },
+      { name: "deadline", type: "uint256" }, { name: "rulesHash", type: "bytes32" },
+      { name: "metadataURI", type: "string" }, { name: "categoryId", type: "bytes32" },
+      { name: "permitData", type: "tuple", components: [
+        { name: "value", type: "uint256" }, { name: "deadline", type: "uint256" },
+        { name: "v", type: "uint8" }, { name: "r", type: "bytes32" }, { name: "s", type: "bytes32" },
+      ] },
     ],
     outputs: [{ name: "bountyId", type: "uint256" }],
   },

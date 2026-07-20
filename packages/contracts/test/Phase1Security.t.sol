@@ -121,7 +121,8 @@ contract Phase1SecurityTest {
         MockSettlementToken token = new MockSettlementToken();
         CreationBondPolicy policy = new CreationBondPolicy(address(this));
         CreationBondContextResolver resolver = new CreationBondContextResolver(address(this));
-        BountyFactory factory = new BountyFactory(address(this), address(policy), address(resolver));
+        BountyFactory factory =
+            new BountyFactory(address(this), address(policy), address(resolver), address(0xF0));
         Phase1Actor creator = new Phase1Actor();
         Phase1Actor winnerA = new Phase1Actor();
         Phase1Actor winnerB = new Phase1Actor();
@@ -155,7 +156,8 @@ contract Phase1SecurityTest {
         MockSettlementToken token = new MockSettlementToken();
         CreationBondPolicy policy = new CreationBondPolicy(address(this));
         CreationBondContextResolver resolver = new CreationBondContextResolver(address(this));
-        BountyFactory factory = new BountyFactory(address(this), address(policy), address(resolver));
+        BountyFactory factory =
+            new BountyFactory(address(this), address(policy), address(resolver), address(0xF0));
         Phase1Actor creator = new Phase1Actor();
         Phase1Actor submitter = new Phase1Actor();
 
@@ -182,7 +184,8 @@ contract Phase1SecurityTest {
         MockSettlementToken token = new MockSettlementToken();
         CreationBondPolicy policy = new CreationBondPolicy(address(this));
         CreationBondContextResolver resolver = new CreationBondContextResolver(address(this));
-        BountyFactory factory = new BountyFactory(address(this), address(policy), address(resolver));
+        BountyFactory factory =
+            new BountyFactory(address(this), address(policy), address(resolver), address(0xF0));
         Phase1Actor creator = new Phase1Actor();
         Phase1Actor submitter = new Phase1Actor();
 
@@ -200,7 +203,8 @@ contract Phase1SecurityTest {
     function testBountyRejectsUnboundedWinnerFanout() public {
         CreationBondPolicy policy = new CreationBondPolicy(address(this));
         CreationBondContextResolver resolver = new CreationBondContextResolver(address(this));
-        BountyFactory factory = new BountyFactory(address(this), address(policy), address(resolver));
+        BountyFactory factory =
+            new BountyFactory(address(this), address(policy), address(resolver), address(0xF0));
         address[] memory winners = new address[](101);
         uint256[] memory amounts = new uint256[](101);
 
@@ -214,7 +218,8 @@ contract Phase1SecurityTest {
         address coldWallet = address(0xC01D);
         BountyRecoveryVault vault = new BountyRecoveryVault(address(this), coldWallet);
         CreationBondContextResolver resolver = new CreationBondContextResolver(address(this));
-        BountyFactory factory = new BountyFactory(address(this), address(policy), address(resolver));
+        BountyFactory factory =
+            new BountyFactory(address(this), address(policy), address(resolver), address(0xF0));
         factory.setRecoveryVault(address(vault));
         Phase1Actor creator = new Phase1Actor();
         token.mint(address(creator), 25_000_000);
@@ -300,7 +305,8 @@ contract Phase1SecurityTest {
         token = new MockSettlementToken();
         CreationBondPolicy policy = new CreationBondPolicy(address(this));
         CreationBondContextResolver resolver = new CreationBondContextResolver(address(this));
-        factory = new MarketFactory(address(this), address(policy), address(resolver));
+        factory =
+            new MarketFactory(address(this), address(policy), address(resolver), address(0xF0));
         token.mint(address(this), 5_000_000);
         token.approve(address(factory), 5_000_000);
         string[] memory outcomes = new string[](2);

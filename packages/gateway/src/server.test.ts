@@ -16,6 +16,8 @@ describe("gateway HTTP server", () => {
       allowedOrigins: ["https://alterford.example"],
       publicConfig: {
         chainId: 84532,
+        marketFactory: "0x3333333333333333333333333333333333333333",
+        bountyFactory: "0x4444444444444444444444444444444444444444",
         challengeFactory: "0x1111111111111111111111111111111111111111",
         forwarder: "0x2222222222222222222222222222222222222222",
         relayEnabled: true,
@@ -50,6 +52,8 @@ describe("gateway HTTP server", () => {
       allowedOrigins: ["https://alterford.example"],
       publicConfig: {
         chainId: 84532,
+        marketFactory: "0x3333333333333333333333333333333333333333",
+        bountyFactory: "0x4444444444444444444444444444444444444444",
         challengeFactory: "0x1111111111111111111111111111111111111111",
         forwarder: "0x2222222222222222222222222222222222222222",
         relayEnabled: true,
@@ -220,6 +224,8 @@ function options() {
     allowedOrigins: ["https://alterford.example"],
     publicConfig: {
       chainId: 84532,
+      marketFactory: "0x3333333333333333333333333333333333333333" as const,
+      bountyFactory: "0x4444444444444444444444444444444444444444" as const,
       challengeFactory: "0x1111111111111111111111111111111111111111" as const,
       forwarder: "0x2222222222222222222222222222222222222222" as const,
       relayEnabled: true,

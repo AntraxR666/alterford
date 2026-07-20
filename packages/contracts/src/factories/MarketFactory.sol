@@ -11,8 +11,10 @@ import { CreationBondContextResolver } from "../bonds/CreationBondContextResolve
 import { IERC20 } from "../token/IERC20.sol";
 import { EIP712 } from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import { SignatureChecker } from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
+import { ERC2771Context } from "@openzeppelin/contracts/metatx/ERC2771Context.sol";
+import { IERC20Permit } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 
-contract MarketFactory is Governed, ReentrancyGuardLite, EIP712 {
+contract MarketFactory is Governed, ReentrancyGuardLite, EIP712, ERC2771Context {
     struct Market {
         address creator;
         address settlementToken;
@@ -37,6 +39,14 @@ contract MarketFactory is Governed, ReentrancyGuardLite, EIP712 {
         uint256 nonce;
         uint256 deadline;
         address authorizedRelayer;
+    }
+
+    struct PermitData {
+        uint256 value;
+        uint256 deadline;
+        uint8 v;
+        bytes32 r;
+        bytes32 s;
     }
 
     bytes32 public constant BET_AUTHORIZATION_TYPEHASH = keccak256(
@@ -123,9 +133,15 @@ contract MarketFactory is Governed, ReentrancyGuardLite, EIP712 {
     );
     event NonceInvalidated(address indexed bettor, uint256 oldNonce, uint256 newNonce);
 
-    constructor(address initialAdmin, address initialBondPolicy, address initialBondContextResolver)
+    constructor(
+        address initialAdmin,
+        address initialBondPolicy,
+        address initialBondContextResolver,
+        address trustedForwarder
+    )
         Governed(initialAdmin)
         EIP712("AlterfordMarketFactory", "1")
+        ERC2771Context(trustedForwarder)
     {
         if (initialBondPolicy == address(0) || initialBondContextResolver == address(0)) {
             revert AlterfordErrors.InvalidBondPolicy();
@@ -160,20 +176,77 @@ contract MarketFactory is Governed, ReentrancyGuardLite, EIP712 {
         AlterfordTypes.NoWinnersPolicy noWinnersPolicy,
         bytes32 categoryId
     ) external nonReentrant whenNotPaused returns (uint256 marketId) {
+        return _createMarket(
+            settlementToken,
+            metadataHash,
+            metadataURI,
+            outcomes,
+            lockTime,
+            resolutionTime,
+            noWinnersPolicy,
+            categoryId,
+            _actor()
+        );
+    }
+
+    function createMarketWithPermit(
+        address settlementToken,
+        bytes32 metadataHash,
+        string calldata metadataURI,
+        string[] calldata outcomes,
+        uint256 lockTime,
+        uint256 resolutionTime,
+        AlterfordTypes.NoWinnersPolicy noWinnersPolicy,
+        bytes32 categoryId,
+        PermitData calldata permitData
+    ) external nonReentrant whenNotPaused returns (uint256 marketId) {
+        IERC20Permit(settlementToken)
+            .permit(
+                _actor(),
+                address(this),
+                permitData.value,
+                permitData.deadline,
+                permitData.v,
+                permitData.r,
+                permitData.s
+            );
+        return _createMarket(
+            settlementToken,
+            metadataHash,
+            metadataURI,
+            outcomes,
+            lockTime,
+            resolutionTime,
+            noWinnersPolicy,
+            categoryId,
+            _actor()
+        );
+    }
+
+    function _createMarket(
+        address settlementToken,
+        bytes32 metadataHash,
+        string memory metadataURI,
+        string[] memory outcomes,
+        uint256 lockTime,
+        uint256 resolutionTime,
+        AlterfordTypes.NoWinnersPolicy noWinnersPolicy,
+        bytes32 categoryId,
+        address creator
+    ) private returns (uint256 marketId) {
         if (settlementToken == address(0)) revert AlterfordErrors.InvalidToken();
         if (metadataHash == bytes32(0)) revert AlterfordErrors.InvalidMetadataHash();
         if (outcomes.length < 2 || outcomes.length > 16) revert AlterfordErrors.InvalidOutcome();
         if (lockTime <= block.timestamp || resolutionTime <= lockTime) {
             revert AlterfordErrors.InvalidAmount();
         }
-        CreationBondPolicy.BondContext memory bondContext = bondContextResolver.resolve(
-            msg.sender, AlterfordTypes.EntityType.Market, categoryId, 0
-        );
+        CreationBondPolicy.BondContext memory bondContext =
+            bondContextResolver.resolve(creator, AlterfordTypes.EntityType.Market, categoryId, 0);
         (uint256 requiredBond, uint16 reasonFlags) = bondPolicy.previewBond(bondContext);
         marketId = nextMarketId++;
 
         Market storage market = markets[marketId];
-        market.creator = msg.sender;
+        market.creator = creator;
         market.settlementToken = settlementToken;
         market.metadataHash = metadataHash;
         market.metadataURI = metadataURI;
@@ -190,15 +263,15 @@ contract MarketFactory is Governed, ReentrancyGuardLite, EIP712 {
         }
 
         bondByMarket[marketId] = requiredBond;
-        if (!IERC20(settlementToken).transferFrom(msg.sender, address(this), requiredBond)) {
+        if (!IERC20(settlementToken).transferFrom(creator, address(this), requiredBond)) {
             revert AlterfordErrors.TransferFailed();
         }
 
-        emit BondCalculated("Market", marketId, msg.sender, requiredBond, reasonFlags);
-        emit BondLocked("Market", marketId, msg.sender, requiredBond);
+        emit BondCalculated("Market", marketId, creator, requiredBond, reasonFlags);
+        emit BondLocked("Market", marketId, creator, requiredBond);
         emit MarketCreated(
             marketId,
-            msg.sender,
+            creator,
             settlementToken,
             metadataHash,
             metadataURI,
@@ -226,12 +299,27 @@ contract MarketFactory is Governed, ReentrancyGuardLite, EIP712 {
         nonReentrant
         whenNotPaused
     {
+        _placeBet(marketId, outcome, amount, _actor());
+    }
+
+    function placeBetWithPermit(
+        uint256 marketId,
+        uint8 outcome,
+        uint256 amount,
+        PermitData calldata permitData
+    ) external nonReentrant whenNotPaused {
         Market storage market = markets[marketId];
-        _recordBet(marketId, msg.sender, outcome, amount);
-        if (!IERC20(market.settlementToken).transferFrom(msg.sender, address(this), amount)) {
-            revert AlterfordErrors.TransferFailed();
-        }
-        emit BetPlaced(marketId, msg.sender, outcome, amount);
+        IERC20Permit(market.settlementToken)
+            .permit(
+                _actor(),
+                address(this),
+                permitData.value,
+                permitData.deadline,
+                permitData.v,
+                permitData.r,
+                permitData.s
+            );
+        _placeBet(marketId, outcome, amount, _actor());
     }
 
     function placeBetBySig(BetAuthorization calldata authorization, bytes calldata signature)
@@ -283,10 +371,11 @@ contract MarketFactory is Governed, ReentrancyGuardLite, EIP712 {
     }
 
     function invalidateNonce(uint256 newNonce) external {
-        uint256 oldNonce = nonces[msg.sender];
+        address bettor = _actor();
+        uint256 oldNonce = nonces[bettor];
         if (newNonce <= oldNonce) revert AlterfordErrors.InvalidNonce();
-        nonces[msg.sender] = newNonce;
-        emit NonceInvalidated(msg.sender, oldNonce, newNonce);
+        nonces[bettor] = newNonce;
+        emit NonceInvalidated(bettor, oldNonce, newNonce);
     }
 
     function hashBetAuthorization(BetAuthorization memory authorization)
@@ -353,15 +442,16 @@ contract MarketFactory is Governed, ReentrancyGuardLite, EIP712 {
         if (market.state != AlterfordTypes.MarketState.Resolved) {
             revert AlterfordErrors.MarketNotResolved();
         }
-        if (rewardClaimed[marketId][msg.sender]) revert AlterfordErrors.AlreadyClaimed();
+        address user = _actor();
+        if (rewardClaimed[marketId][user]) revert AlterfordErrors.AlreadyClaimed();
 
         uint256 winningPool = poolByOutcome[marketId][market.winningOutcome];
         if (winningPool == 0) revert AlterfordErrors.NoWinners();
 
-        uint256 userWinningStake = stakeByUserOutcome[marketId][msg.sender][market.winningOutcome];
+        uint256 userWinningStake = stakeByUserOutcome[marketId][user][market.winningOutcome];
         if (userWinningStake == 0) revert AlterfordErrors.NothingToClaim();
 
-        rewardClaimed[marketId][msg.sender] = true;
+        rewardClaimed[marketId][user] = true;
         claimedWinningStakeByMarket[marketId] += userWinningStake;
 
         uint256 payout;
@@ -373,10 +463,10 @@ contract MarketFactory is Governed, ReentrancyGuardLite, EIP712 {
         }
         rewardPaidByMarket[marketId] += payout;
 
-        if (!IERC20(market.settlementToken).transfer(msg.sender, payout)) {
+        if (!IERC20(market.settlementToken).transfer(user, payout)) {
             revert AlterfordErrors.TransferFailed();
         }
-        emit RewardClaimed(marketId, msg.sender, payout);
+        emit RewardClaimed(marketId, user, payout);
     }
 
     function claimRefund(uint256 marketId) external nonReentrant whenNotPaused {
@@ -386,16 +476,17 @@ contract MarketFactory is Governed, ReentrancyGuardLite, EIP712 {
         if (market.state != AlterfordTypes.MarketState.Cancelled && !noWinners) {
             revert AlterfordErrors.InvalidState();
         }
-        if (refundClaimed[marketId][msg.sender]) revert AlterfordErrors.AlreadyClaimed();
+        address user = _actor();
+        if (refundClaimed[marketId][user]) revert AlterfordErrors.AlreadyClaimed();
 
-        uint256 refund = totalStakeByUser[marketId][msg.sender];
+        uint256 refund = totalStakeByUser[marketId][user];
         if (refund == 0) revert AlterfordErrors.NothingToClaim();
 
-        refundClaimed[marketId][msg.sender] = true;
-        if (!IERC20(market.settlementToken).transfer(msg.sender, refund)) {
+        refundClaimed[marketId][user] = true;
+        if (!IERC20(market.settlementToken).transfer(user, refund)) {
             revert AlterfordErrors.TransferFailed();
         }
-        emit RefundClaimed(marketId, msg.sender, refund);
+        emit RefundClaimed(marketId, user, refund);
     }
 
     function confirmFraud(uint256 marketId, bytes32 reasonHash) external onlyRole(ARBITER_ROLE) {
@@ -415,6 +506,15 @@ contract MarketFactory is Governed, ReentrancyGuardLite, EIP712 {
         stakeByUserOutcome[marketId][user][outcome] += amount;
         totalStakeByUser[marketId][user] += amount;
         totalPoolByMarket[marketId] += amount;
+    }
+
+    function _placeBet(uint256 marketId, uint8 outcome, uint256 amount, address bettor) private {
+        Market storage market = markets[marketId];
+        _recordBet(marketId, bettor, outcome, amount);
+        if (!IERC20(market.settlementToken).transferFrom(bettor, address(this), amount)) {
+            revert AlterfordErrors.TransferFailed();
+        }
+        emit BetPlaced(marketId, bettor, outcome, amount);
     }
 
     function _settleFees(uint256 marketId) private {
@@ -467,5 +567,9 @@ contract MarketFactory is Governed, ReentrancyGuardLite, EIP712 {
         bondFinalized[marketId] = true;
         bondByMarket[marketId] = 0;
         emit BondSlashed("Market", marketId, amount, reasonHash);
+    }
+
+    function _actor() internal view override returns (address) {
+        return _msgSender();
     }
 }

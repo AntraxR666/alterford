@@ -6,7 +6,7 @@ import { PolicyViolation } from "./policy.js";
 import type { FiatSessionInput } from "./transak.js";
 
 interface GatewayHttpService {
-  prepareRelay(input: { chainId: number; user: Address; data: Hex }, ip: string): Promise<unknown>;
+  prepareRelay(input: { chainId: number; user: Address; target: Address; data: Hex }, ip: string): Promise<unknown>;
   submitRelay(input: { request: SignedForwardRequest; idempotencyKey: string }, ip: string): Promise<unknown>;
   relayStatus(taskId: string): Promise<unknown>;
   createFiatSession(input: FiatSessionInput & { idempotencyKey: string }): Promise<unknown>;
@@ -59,6 +59,8 @@ interface ServerOptions {
   allowedOrigins: string[];
   publicConfig: {
     chainId: number;
+    marketFactory: Address;
+    bountyFactory: Address;
     challengeFactory: Address;
     forwarder: Address;
     relayEnabled: boolean;
@@ -187,6 +189,7 @@ export function startGatewayServer(service: GatewayHttpService, options: ServerO
         return send(response, 200, await service.prepareRelay({
           chainId: requiredNumber(body, "chainId"),
           user: requiredString(body, "user") as Address,
+          target: requiredString(body, "target") as Address,
           data: requiredString(body, "data") as Hex,
         }, ip));
       }

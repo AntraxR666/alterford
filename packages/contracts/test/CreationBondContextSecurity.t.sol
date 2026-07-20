@@ -71,7 +71,8 @@ contract CreationBondContextSecurityTest {
     }
 
     function testUnderworldCategoryCannotBeDowngradedByFactoryCalldata() public {
-        MarketFactory factory = new MarketFactory(address(this), address(policy), address(resolver));
+        MarketFactory factory =
+            new MarketFactory(address(this), address(policy), address(resolver), address(0xF0));
         token.mint(address(this), 10_000_000);
         token.approve(address(factory), 10_000_000);
         string[] memory outcomes = new string[](2);
@@ -98,7 +99,8 @@ contract CreationBondContextSecurityTest {
     }
 
     function testBountyAndChallengeUseEscrowAsExpectedVolume() public {
-        BountyFactory bounty = new BountyFactory(address(this), address(policy), address(resolver));
+        BountyFactory bounty =
+            new BountyFactory(address(this), address(policy), address(resolver), address(0xF0));
         ChallengeFactory challenge =
             new ChallengeFactory(address(this), address(policy), address(resolver), address(0xF0));
         token.mint(address(this), 2_100_000_000);

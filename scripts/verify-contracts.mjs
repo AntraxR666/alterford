@@ -45,8 +45,13 @@ const verifications = [
     address: contracts.marketFactory.address,
     target: "src/factories/MarketFactory.sol:MarketFactory",
     constructorArgs: encodeAbiParameters(
-      [{ type: "address" }, { type: "address" }, { type: "address" }],
-      [deployer, contracts.creationBondPolicy.address, contracts.bondContextResolver.address],
+      [{ type: "address" }, { type: "address" }, { type: "address" }, { type: "address" }],
+      [
+        deployer,
+        contracts.creationBondPolicy.address,
+        contracts.bondContextResolver.address,
+        contracts.alterfordForwarder.address,
+      ],
     ),
   },
   {
@@ -54,8 +59,13 @@ const verifications = [
     address: contracts.bountyFactory.address,
     target: "src/factories/BountyFactory.sol:BountyFactory",
     constructorArgs: encodeAbiParameters(
-      [{ type: "address" }, { type: "address" }, { type: "address" }],
-      [deployer, contracts.creationBondPolicy.address, contracts.bondContextResolver.address],
+      [{ type: "address" }, { type: "address" }, { type: "address" }, { type: "address" }],
+      [
+        deployer,
+        contracts.creationBondPolicy.address,
+        contracts.bondContextResolver.address,
+        contracts.alterfordForwarder.address,
+      ],
     ),
   },
   {

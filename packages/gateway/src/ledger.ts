@@ -1,5 +1,5 @@
 import { isAddress, type Address } from "viem";
-import { PolicyViolation, type SponsoredChallengeAction } from "./policy.js";
+import { PolicyViolation, type SponsoredAction } from "./policy.js";
 
 interface LedgerConfig {
   globalDailyLimit: number;
@@ -11,7 +11,7 @@ export interface Reservation {
   key: string;
   user: Address;
   ip: string;
-  action: SponsoredChallengeAction;
+  action: SponsoredAction;
   createdAt: number;
   taskId?: string;
 }
@@ -47,7 +47,7 @@ export class SponsorshipLedger {
     key: string,
     user: Address,
     ip: string,
-    action: SponsoredChallengeAction,
+    action: SponsoredAction,
     now: number,
   ) {
     if (!/^[A-Za-z0-9._:-]{8,128}$/.test(key)) {
@@ -93,9 +93,15 @@ export class SponsorshipLedger {
   }
 }
 
-const actions = new Set<SponsoredChallengeAction>([
-  "createChallenge",
-  "acceptChallenge",
+const actions = new Set<SponsoredAction>([
+  "createMarketWithPermit",
+  "placeBetWithPermit",
+  "claimReward",
+  "claimRefund",
+  "createBountyWithPermit",
+  "submit",
+  "createChallengeWithPermit",
+  "acceptChallengeWithPermit",
   "updateLiveStreamURI",
   "submitEvidence",
   "proposeResolution",

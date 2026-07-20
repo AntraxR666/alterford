@@ -50,6 +50,7 @@ const creationBondPolicyAddress =
   chainConfig.creationBondPolicyAddress || existingDeployment?.contracts?.creationBondPolicy?.address;
 const securityCouncil = chainConfig.securityCouncil || existingDeployment?.securityCouncil;
 const coldWallet = chainConfig.coldWallet || existingDeployment?.coldWallet;
+const deployNewSettlementToken = chainName === "base-sepolia" && process.env.REUSE_SETTLEMENT_TOKEN !== "1";
 if (chainName === "base-sepolia") {
   record("foundry_account_present", Boolean(chainConfig.accountName), { required: true });
   record("keystore_password_file_present", Boolean(chainConfig.passwordFile) || process.env.ALLOW_INTERACTIVE_KEYSTORE === "1", {
@@ -75,9 +76,13 @@ if (chainName === "base-sepolia") {
       && isAddress(coldWallet ?? "")
       && securityCouncil.toLowerCase() !== coldWallet.toLowerCase(),
   );
-  record("settlement_token_reuse_address", isAddress(settlementTokenAddress ?? ""), {
-    address: settlementTokenAddress,
-  });
+  record(
+    "settlement_token_mode",
+    deployNewSettlementToken || isAddress(settlementTokenAddress ?? ""),
+    deployNewSettlementToken
+      ? { mode: "fresh_eip2612_mock" }
+      : { mode: "reuse", address: settlementTokenAddress },
+  );
   record("bond_policy_reuse_address", isAddress(creationBondPolicyAddress ?? ""), {
     address: creationBondPolicyAddress,
   });
@@ -133,7 +138,7 @@ try {
       balanceEth: formatEther(balance),
     });
   }
-  if (chainName === "base-sepolia" && isAddress(settlementTokenAddress ?? "")) {
+  if (chainName === "base-sepolia" && !deployNewSettlementToken && isAddress(settlementTokenAddress ?? "")) {
     const code = await publicClient.getBytecode({ address: settlementTokenAddress });
     record("settlement_token_has_code", Boolean(code && code !== "0x"), {
       address: settlementTokenAddress,

@@ -3,6 +3,8 @@ import type { Address, Hex } from "viem";
 
 export interface GatewayPublicConfig {
   chainId: number;
+  marketFactory: Address;
+  bountyFactory: Address;
   challengeFactory: Address;
   forwarder: Address;
   relayEnabled: boolean;
@@ -37,10 +39,18 @@ export interface EvidenceImageUpload {
 
 export function isRelayConfigCompatible(
   config: GatewayPublicConfig,
-  expected: { chainId: number; challengeFactory: Address; forwarder: Address },
+  expected: {
+    chainId: number;
+    marketFactory: Address;
+    bountyFactory: Address;
+    challengeFactory: Address;
+    forwarder: Address;
+  },
 ): boolean {
   return config.relayEnabled
     && config.chainId === expected.chainId
+    && config.marketFactory.toLowerCase() === expected.marketFactory.toLowerCase()
+    && config.bountyFactory.toLowerCase() === expected.bountyFactory.toLowerCase()
     && config.challengeFactory.toLowerCase() === expected.challengeFactory.toLowerCase()
     && config.forwarder.toLowerCase() === expected.forwarder.toLowerCase();
 }
@@ -124,7 +134,7 @@ export class AlterfordGatewayClient {
     return this.request<GatewayPublicConfig>("/v1/config");
   }
 
-  async prepareRelay(input: { chainId: number; user: Address; data: Hex }) {
+  async prepareRelay(input: { chainId: number; user: Address; target: Address; data: Hex }) {
     const response = await this.request<{
       action: string;
       request: Record<string, unknown>;

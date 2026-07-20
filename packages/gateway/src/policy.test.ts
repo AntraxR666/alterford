@@ -4,27 +4,31 @@ import { challengeFactoryAbi } from "@alterford/sdk";
 import { PolicyViolation, SponsorshipPolicy } from "./policy.js";
 
 const target = "0x1111111111111111111111111111111111111111" as Address;
+const marketFactory = "0x3333333333333333333333333333333333333333" as Address;
+const bountyFactory = "0x4444444444444444444444444444444444444444" as Address;
 const user = "0x2222222222222222222222222222222222222222" as Address;
 
 describe("SponsorshipPolicy", () => {
   const policy = new SponsorshipPolicy({
     chainId: 84532,
+    marketFactory,
+    bountyFactory,
     challengeFactory: target,
     requestTtlSeconds: 600,
     maxCalldataBytes: 4096,
   });
 
-  it("allows only configured challenge selectors and assigns bounded gas", () => {
+  it("allows only configured factory selectors and assigns bounded gas", () => {
     const data = encodeFunctionData({
       abi: challengeFactoryAbi,
-      functionName: "acceptChallenge",
-      args: [1n, "https://live.example/session"],
+      functionName: "acceptChallengeWithPermit",
+      args: [1n, "https://live.example/session", { value: 1n, deadline: 2n, v: 27, r: `0x${"00".repeat(32)}`, s: `0x${"00".repeat(32)}` }],
     });
 
     expect(policy.authorize({ chainId: 84532, target, user, value: 0n, data }, 1_000)).toEqual({
-      action: "acceptChallenge",
+      action: "acceptChallengeWithPermit",
       deadline: 1_600,
-      gas: 600_000n,
+      gas: 700_000n,
     });
   });
 

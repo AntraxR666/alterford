@@ -4,6 +4,8 @@ import { challengeFactoryAbi } from "@alterford/sdk";
 import { GatewayService } from "./service.js";
 
 const challengeFactory = "0x1111111111111111111111111111111111111111" as Address;
+const marketFactory = "0x1212121212121212121212121212121212121212" as Address;
+const bountyFactory = "0x1313131313131313131313131313131313131313" as Address;
 const forwarder = "0x2222222222222222222222222222222222222222" as Address;
 const user = "0x3333333333333333333333333333333333333333" as Address;
 const signature = `0x${"11".repeat(65)}` as Hex;
@@ -29,6 +31,8 @@ function fixture() {
   const service = new GatewayService({
     config: {
       chainId: 84532,
+      marketFactory,
+      bountyFactory,
       challengeFactory,
       forwarder,
       requestTtlSeconds: 600,
@@ -50,17 +54,17 @@ describe("GatewayService relay flow", () => {
     const { service } = fixture();
     const data = encodeFunctionData({
       abi: challengeFactoryAbi,
-      functionName: "acceptChallenge",
-      args: [1n, ""],
+      functionName: "submitEvidence",
+      args: [1n, `0x${"22".repeat(32)}`, "ipfs://evidence", ""],
     });
 
-    const prepared = await service.prepareRelay({ chainId: 84532, user, data }, "203.0.113.10");
+    const prepared = await service.prepareRelay({ chainId: 84532, user, target: challengeFactory, data }, "203.0.113.10");
 
     expect(prepared.request).toMatchObject({
       from: user,
       to: challengeFactory,
       value: 0n,
-      gas: 600_000n,
+      gas: 500_000n,
       nonce: 7n,
       deadline: 1_600,
     });
@@ -74,7 +78,7 @@ describe("GatewayService relay flow", () => {
       functionName: "submitEvidence",
       args: [1n, `0x${"22".repeat(32)}`, "ipfs://evidence", ""],
     });
-    const prepared = await service.prepareRelay({ chainId: 84532, user, data }, "203.0.113.10");
+    const prepared = await service.prepareRelay({ chainId: 84532, user, target: challengeFactory, data }, "203.0.113.10");
     const input = { request: { ...prepared.request, signature }, idempotencyKey: "request-1" };
 
     const first = await service.submitRelay(input, "203.0.113.10");
@@ -96,7 +100,7 @@ describe("GatewayService relay flow", () => {
       functionName: "finalizeUndisputed",
       args: [1n],
     });
-    const prepared = await service.prepareRelay({ chainId: 84532, user, data }, "203.0.113.10");
+    const prepared = await service.prepareRelay({ chainId: 84532, user, target: challengeFactory, data }, "203.0.113.10");
 
     await expect(
       service.submitRelay(

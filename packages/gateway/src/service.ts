@@ -11,6 +11,8 @@ import type { FiatSessionInput } from "./transak.js";
 
 export interface GatewayConfig {
   chainId: number;
+  marketFactory: Address;
+  bountyFactory: Address;
   challengeFactory: Address;
   forwarder: Address;
   requestTtlSeconds: number;
@@ -59,12 +61,12 @@ export class GatewayService {
     this.now = options.now ?? (() => Math.floor(Date.now() / 1_000));
   }
 
-  async prepareRelay(input: { chainId: number; user: Address; data: Hex }, _ip: string) {
+  async prepareRelay(input: { chainId: number; user: Address; target: Address; data: Hex }, _ip: string) {
     const now = this.now();
     const authorization = this.policy.authorize(
       {
         chainId: input.chainId,
-        target: this.options.config.challengeFactory,
+        target: input.target,
         user: input.user,
         value: 0n,
         data: input.data,
@@ -73,7 +75,7 @@ export class GatewayService {
     );
     const request: UnsignedForwardRequest = {
       from: input.user,
-      to: this.options.config.challengeFactory,
+      to: input.target,
       value: 0n,
       gas: authorization.gas,
       nonce: await this.options.chain.getNonce(input.user),

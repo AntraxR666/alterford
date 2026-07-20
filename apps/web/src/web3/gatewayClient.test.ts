@@ -7,6 +7,8 @@ describe("AlterfordGatewayClient", () => {
   it("offers gasless actions only for the exact active deployment", () => {
     const expected = {
       chainId: 84532,
+      marketFactory: "0x1111111111111111111111111111111111111111" as const,
+      bountyFactory: "0x1212121212121212121212121212121212121212" as const,
       challengeFactory: "0x1111111111111111111111111111111111111111" as const,
       forwarder: "0x2222222222222222222222222222222222222222" as const,
     };
@@ -36,7 +38,12 @@ describe("AlterfordGatewayClient", () => {
     }), { status: 200 }));
     const client = new AlterfordGatewayClient("https://gateway.example", fetcher as typeof fetch);
 
-    const result = await client.prepareRelay({ chainId: 84532, user: address, data: "0x12345678" });
+    const result = await client.prepareRelay({
+      chainId: 84532,
+      user: address,
+      target: "0x00000000000000000000000000000000000000b1",
+      data: "0x12345678",
+    });
 
     expect(result.request.nonce).toBe(9_007_199_254_740_993n);
     expect(result.request.gas).toBe(600_000n);
@@ -101,6 +108,8 @@ describe("AlterfordGatewayClient", () => {
       if (this !== undefined) throw new TypeError("Illegal invocation");
       return Promise.resolve(new Response(JSON.stringify({
         chainId: 84532,
+        marketFactory: address,
+        bountyFactory: address,
         challengeFactory: address,
         forwarder: address,
         relayEnabled: true,

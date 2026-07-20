@@ -30,6 +30,8 @@ import {
 } from "./evidencePinning.js";
 
 const chainId = numberEnv("CHAIN_ID", 84532);
+const marketFactory = addressEnv("MARKET_FACTORY_ADDRESS");
+const bountyFactory = addressEnv("BOUNTY_FACTORY_ADDRESS");
 const challengeFactory = addressEnv("CHALLENGE_FACTORY_ADDRESS");
 const forwarder = addressEnv("ALTERFORD_FORWARDER_ADDRESS");
 const configuredRpcUrl = process.env.RPC_URL || process.env.BASE_MAINNET_RPC_URL || process.env.BASE_SEPOLIA_RPC_URL;
@@ -69,6 +71,8 @@ const ledgerPath = process.env.GATEWAY_LEDGER_PATH || "data/sponsorship-ledger.j
 const service = new GatewayService({
   config: {
     chainId,
+    marketFactory,
+    bountyFactory,
     challengeFactory,
     forwarder,
     requestTtlSeconds: numberEnv("RELAY_REQUEST_TTL_SECONDS", 600),
@@ -119,6 +123,8 @@ const server = startGatewayServer({
     .filter(Boolean),
   publicConfig: {
     chainId,
+    marketFactory,
+    bountyFactory,
     challengeFactory,
     forwarder,
     relayEnabled: relayProvider !== "disabled",

@@ -10,6 +10,7 @@ import { CreationBondPolicy } from "../bonds/CreationBondPolicy.sol";
 import { CreationBondContextResolver } from "../bonds/CreationBondContextResolver.sol";
 import { IERC20 } from "../token/IERC20.sol";
 import { ERC2771Context } from "@openzeppelin/contracts/metatx/ERC2771Context.sol";
+import { IERC20Permit } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 
 contract ChallengeFactory is Governed, ReentrancyGuardLite, ERC2771Context {
     struct Challenge {
@@ -35,6 +36,14 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite, ERC2771Context {
         bytes32 evidenceHash;
         uint64 proposedAt;
         uint64 disputeDeadline;
+    }
+
+    struct PermitData {
+        uint256 value;
+        uint256 deadline;
+        uint8 v;
+        bytes32 r;
+        bytes32 s;
     }
 
     uint256 public constant HIGH_VALUE_THRESHOLD = 1_000_000_000;
@@ -190,12 +199,52 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite, ERC2771Context {
         uint256 deadline,
         bytes32 categoryId
     ) external nonReentrant whenNotPaused returns (uint256 challengeId) {
-        if (settlementToken == address(0)) revert AlterfordErrors.InvalidToken();
+        return _createChallenge(
+            settlementToken, rewardPool, rulesHash, metadataURI, deadline, categoryId, _actor()
+        );
+    }
+
+    function createChallengeWithPermit(
+        address settlementToken,
+        uint256 rewardPool,
+        bytes32 rulesHash,
+        string calldata metadataURI,
+        uint256 deadline,
+        bytes32 categoryId,
+        PermitData calldata permitData
+    ) external nonReentrant whenNotPaused returns (uint256 challengeId) {
+        IERC20Permit(settlementToken)
+            .permit(
+                _actor(),
+                address(this),
+                permitData.value,
+                permitData.deadline,
+                permitData.v,
+                permitData.r,
+                permitData.s
+            );
+        return _createChallenge(
+            settlementToken, rewardPool, rulesHash, metadataURI, deadline, categoryId, _actor()
+        );
+    }
+
+    function _createChallenge(
+        address settlementToken,
+        uint256 rewardPool,
+        bytes32 rulesHash,
+        string memory metadataURI,
+        uint256 deadline,
+        bytes32 categoryId,
+        address creator
+    ) private returns (uint256 challengeId) {
+        if (settlementToken == address(0)) {
+            revert AlterfordErrors.InvalidToken();
+        }
         if (rewardPool == 0) revert AlterfordErrors.InvalidAmount();
         if (rulesHash == bytes32(0)) revert AlterfordErrors.InvalidMetadataHash();
         if (deadline <= block.timestamp) revert AlterfordErrors.InvalidAmount();
         CreationBondPolicy.BondContext memory bondContext = bondContextResolver.resolve(
-            _actor(), AlterfordTypes.EntityType.Challenge, categoryId, rewardPool
+            creator, AlterfordTypes.EntityType.Challenge, categoryId, rewardPool
         );
         uint256 maxDuration = _isHighRiskOrValue(rewardPool, bondContext.categoryRisk)
             ? HIGH_RISK_RESOLUTION_WINDOW
@@ -208,7 +257,7 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite, ERC2771Context {
         challengeId = nextChallengeId++;
 
         challenges[challengeId] = Challenge({
-            creator: _actor(),
+            creator: creator,
             executor: address(0),
             settlementToken: settlementToken,
             rulesHash: rulesHash,
@@ -225,15 +274,15 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite, ERC2771Context {
         });
         bondByChallenge[challengeId] = requiredBond;
         if (!IERC20(settlementToken)
-                .transferFrom(_actor(), address(this), requiredBond + rewardPool)) {
+                .transferFrom(creator, address(this), requiredBond + rewardPool)) {
             revert AlterfordErrors.TransferFailed();
         }
 
-        emit BondCalculated("Challenge", challengeId, _actor(), requiredBond, reasonFlags);
-        emit BondLocked("Challenge", challengeId, _actor(), requiredBond);
+        emit BondCalculated("Challenge", challengeId, creator, requiredBond, reasonFlags);
+        emit BondLocked("Challenge", challengeId, creator, requiredBond);
         emit ChallengeCreated(
             challengeId,
-            _actor(),
+            creator,
             rewardPool,
             rulesHash,
             categoryId,
@@ -247,29 +296,54 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite, ERC2771Context {
         nonReentrant
         whenNotPaused
     {
+        _acceptChallenge(challengeId, liveStreamURI, _actor());
+    }
+
+    function acceptChallengeWithPermit(
+        uint256 challengeId,
+        string calldata liveStreamURI,
+        PermitData calldata permitData
+    ) external nonReentrant whenNotPaused {
+        Challenge storage challenge = challenges[challengeId];
+        IERC20Permit(challenge.settlementToken)
+            .permit(
+                _actor(),
+                address(this),
+                permitData.value,
+                permitData.deadline,
+                permitData.v,
+                permitData.r,
+                permitData.s
+            );
+        _acceptChallenge(challengeId, liveStreamURI, _actor());
+    }
+
+    function _acceptChallenge(uint256 challengeId, string memory liveStreamURI, address executor)
+        private
+    {
         Challenge storage challenge = challenges[challengeId];
         if (challenge.state != AlterfordTypes.ChallengeState.Open) {
             revert AlterfordErrors.InvalidState();
         }
         if (challenge.creator == address(0)) revert AlterfordErrors.InvalidState();
         if (block.timestamp > challenge.deadline) revert AlterfordErrors.InvalidState();
-        if (_actor() == challenge.creator) revert AlterfordErrors.InvalidState();
+        if (executor == challenge.creator) revert AlterfordErrors.InvalidState();
 
         uint256 executorBond = bondByChallenge[challengeId];
-        challenge.executor = _actor();
+        challenge.executor = executor;
         challenge.liveStreamURI = liveStreamURI;
         challenge.state = AlterfordTypes.ChallengeState.Accepted;
         executorBondByChallenge[challengeId] = executorBond;
 
-        if (!IERC20(challenge.settlementToken).transferFrom(_actor(), address(this), executorBond))
+        if (!IERC20(challenge.settlementToken).transferFrom(executor, address(this), executorBond))
         {
             revert AlterfordErrors.TransferFailed();
         }
 
-        emit BondLocked("ChallengeExecutor", challengeId, _actor(), executorBond);
-        emit ChallengeAccepted(challengeId, _actor(), executorBond);
+        emit BondLocked("ChallengeExecutor", challengeId, executor, executorBond);
+        emit ChallengeAccepted(challengeId, executor, executorBond);
         if (bytes(liveStreamURI).length != 0) {
-            emit ChallengeLiveStreamUpdated(challengeId, _actor(), liveStreamURI);
+            emit ChallengeLiveStreamUpdated(challengeId, executor, liveStreamURI);
         }
     }
 

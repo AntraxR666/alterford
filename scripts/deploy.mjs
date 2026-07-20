@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
-import { createPublicClient, createWalletClient, http } from "viem";
+import { createPublicClient, createWalletClient, http, zeroAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { deploymentRpcUrl } from "./deploy-config.mjs";
 
@@ -73,11 +73,13 @@ async function main() {
     account.address,
     creationBondPolicy.address,
     bondContextResolver.address,
+    alterfordForwarder.address,
   ]);
   const bountyFactory = await deploy("BountyFactory", [
     account.address,
     creationBondPolicy.address,
     bondContextResolver.address,
+    alterfordForwarder.address,
   ]);
   const challengeFactory = await deploy("ChallengeFactory", [
     account.address,
@@ -195,15 +197,19 @@ async function deployWithFoundryKeystore() {
   ) throw new Error("DEPLOYER_ADDRESS does not match the selected Foundry keystore account.");
   const deployer = keystoreDeployer;
   const previousDeployment = await readOptionalDeployment(chainConfig.id);
+  // Base Sepolia releases use a fresh EIP-2612 mock so embedded wallets can authorize
+  // an exact amount without owning test ETH. Reuse is only an explicit recovery option.
+  const deployNewSettlementToken = process.env.REUSE_SETTLEMENT_TOKEN !== "1";
   const settlementTokenAddress =
-    chainConfig.settlementTokenAddress
-    || previousDeployment?.contracts?.settlementToken?.address;
+    deployNewSettlementToken
+      ? undefined
+      : chainConfig.settlementTokenAddress || previousDeployment?.contracts?.settlementToken?.address;
   const creationBondPolicyAddress =
     chainConfig.creationBondPolicyAddress
     || previousDeployment?.contracts?.creationBondPolicy?.address;
   const securityCouncil = chainConfig.securityCouncil || previousDeployment?.securityCouncil;
   const coldWallet = chainConfig.coldWallet || previousDeployment?.coldWallet;
-  if (!settlementTokenAddress || !creationBondPolicyAddress) {
+  if ((!settlementTokenAddress && !deployNewSettlementToken) || !creationBondPolicyAddress) {
     throw new Error(
       "SETTLEMENT_TOKEN_ADDRESS and CREATION_BOND_POLICY_ADDRESS are required when no previous Base Sepolia deployment exists.",
     );
@@ -217,7 +223,7 @@ async function deployWithFoundryKeystore() {
     "--sig",
     "run(address,address,address,address,address)",
     deployer,
-    settlementTokenAddress,
+    settlementTokenAddress || zeroAddress,
     creationBondPolicyAddress,
     securityCouncil,
     coldWallet,
@@ -245,10 +251,14 @@ async function deployWithFoundryKeystore() {
     transport: http(chainConfig.rpcUrl),
   });
   const contracts = await readFoundryBroadcast(chainConfig.id, client, {
-    settlementToken: previousDeployment?.contracts?.settlementToken ?? {
-      address: settlementTokenAddress,
-      artifact: "MockSettlementToken.sol/MockSettlementToken.json",
-    },
+    ...(deployNewSettlementToken
+      ? {}
+      : {
+          settlementToken: previousDeployment?.contracts?.settlementToken ?? {
+            address: settlementTokenAddress,
+            artifact: "MockSettlementToken.sol/MockSettlementToken.json",
+          },
+        }),
     creationBondPolicy: previousDeployment?.contracts?.creationBondPolicy ?? {
       address: creationBondPolicyAddress,
       artifact: "CreationBondPolicy.sol/CreationBondPolicy.json",

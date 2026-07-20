@@ -412,8 +412,10 @@ export function useWeb3Flow(
 
   useEffect(() => {
     const forwarder = addresses.alterfordForwarder;
+    const marketFactory = addresses.marketFactory;
+    const bountyFactory = addresses.bountyFactory;
     const challengeFactory = addresses.challengeFactory;
-    if (!gateway || !forwarder || !challengeFactory) {
+    if (!gateway || !forwarder || !marketFactory || !bountyFactory || !challengeFactory) {
       setGaslessChallengesAvailable(false);
       setChallengeExecutionMode("wallet");
       return;
@@ -424,6 +426,8 @@ export function useWeb3Flow(
         if (!active) return;
         const available = isRelayConfigCompatible(config, {
           chainId: desiredChainId,
+          marketFactory,
+          bountyFactory,
           challengeFactory,
           forwarder,
         });
@@ -438,7 +442,14 @@ export function useWeb3Flow(
     return () => {
       active = false;
     };
-  }, [addresses.alterfordForwarder, addresses.challengeFactory, desiredChainId, gateway]);
+  }, [
+    addresses.alterfordForwarder,
+    addresses.marketFactory,
+    addresses.bountyFactory,
+    addresses.challengeFactory,
+    desiredChainId,
+    gateway,
+  ]);
 
   async function connectWallet() {
     const connector = hasInjectedProvider
@@ -537,19 +548,20 @@ export function useWeb3Flow(
     }
   }
 
-  async function runChallengeTx(
+  async function runSponsoredTx(
     label: string,
+    target: Address | undefined,
     data: Hex,
     directAction: (contracts: ContractAddresses) => Promise<Hex>,
+    sponsor = challengeExecutionMode === "gasless" || walletKind === "embedded",
   ) {
-    if (challengeExecutionMode === "wallet") {
+    if (!sponsor) {
       await runTx(label, directAction);
       return;
     }
     const forwarder = addresses.alterfordForwarder;
-    const challengeFactory = addresses.challengeFactory;
-    if (!gaslessChallengesAvailable || !gateway || !forwarder || !challengeFactory) {
-      setChallengeExecutionMode("wallet");
+    if (!gaslessChallengesAvailable || !gateway || !forwarder || !target) {
+      if (walletKind !== "embedded") setChallengeExecutionMode("wallet");
       setTx({
         status: "failed",
         label: `${label}: patrocinio no disponible`,
@@ -571,12 +583,13 @@ export function useWeb3Flow(
       const prepared = await gateway.prepareRelay({
         chainId: desiredChainId,
         user: account.address,
+        target,
         data,
       });
       const request = prepared.request;
       if (
         request.from.toLowerCase() !== account.address.toLowerCase()
-        || request.to.toLowerCase() !== challengeFactory.toLowerCase()
+        || request.to.toLowerCase() !== target.toLowerCase()
         || request.data.toLowerCase() !== data.toLowerCase()
         || request.value !== 0n
         || request.gas <= 0n
@@ -607,7 +620,7 @@ export function useWeb3Flow(
     } catch (error) {
       const detail = readableTransactionError(error, { walletKind, targetChainName: targetChain.name });
       const relayStillPending = /sigue pendiente/i.test(detail);
-      if (!relayStillPending) setChallengeExecutionMode("wallet");
+      if (!relayStillPending && walletKind !== "embedded") setChallengeExecutionMode("wallet");
       setTx({
         status: "failed",
         label: relayStillPending ? `${label}: relay pendiente` : `${label}: firma sin gas no ejecutada`,
@@ -616,6 +629,54 @@ export function useWeb3Flow(
           : `${detail} No se movieron aUSDT. El siguiente intento usara una transaccion Wallet normal.`,
       });
     }
+  }
+
+  async function runChallengeTx(
+    label: string,
+    data: Hex,
+    directAction: (contracts: ContractAddresses) => Promise<Hex>,
+  ) {
+    await runSponsoredTx(label, addresses.challengeFactory, data, directAction);
+  }
+
+  async function signSettlementPermit(spender: Address, value: bigint) {
+    if (!account.address || !publicClient || !addresses.settlementToken) {
+      throw new Error("Conecta una wallet y espera la configuracion del token antes de firmar el permiso.");
+    }
+    const [nonce, tokenName] = await Promise.all([
+      publicClient.readContract({
+        address: addresses.settlementToken,
+        abi: erc20Abi,
+        functionName: "nonces",
+        args: [account.address],
+      }),
+      publicClient.readContract({
+        address: addresses.settlementToken,
+        abi: erc20Abi,
+        functionName: "name",
+      }),
+    ]);
+    const deadline = BigInt(Math.floor(Date.now() / 1_000) + 10 * 60);
+    const signature = await signTypedDataAsync({
+      domain: {
+        name: tokenName as string,
+        version: "1",
+        chainId: desiredChainId,
+        verifyingContract: addresses.settlementToken,
+      },
+      types: {
+        Permit: [
+          { name: "owner", type: "address" },
+          { name: "spender", type: "address" },
+          { name: "value", type: "uint256" },
+          { name: "nonce", type: "uint256" },
+          { name: "deadline", type: "uint256" },
+        ],
+      },
+      primaryType: "Permit",
+      message: { owner: account.address, spender, value, nonce: nonce as bigint, deadline },
+    });
+    return permitDataFromSignature(value, deadline, signature);
   }
 
   function selectChallengeExecutionMode(mode: ChallengeExecutionMode) {
@@ -752,17 +813,12 @@ export function useWeb3Flow(
       "Crear mercado",
       [
         [hasEnoughCreateBalance, `Necesitas ${formatUsdt(createMarketCost)} aUSDT para bloquear el bond del mercado.`],
-        [!needsCreateApproval, "Primero autoriza aUSDT para crear el mercado."],
+        [!needsCreateApproval || gaslessChallengesAvailable, "Primero autoriza aUSDT para crear el mercado."],
       ],
-      () => runTx("Crear mercado", (contracts) => {
-      const metadataURI = buildMarketMetadataURI(input, isUnderworldMode);
-      return writeContractAsync({
-        address: contracts.marketFactory,
-        abi: marketFactoryAbi,
-        functionName: "createMarket",
-        chainId: desiredChainId,
-        args: [
-          contracts.settlementToken,
+      async () => {
+        const metadataURI = buildMarketMetadataURI(input, isUnderworldMode);
+        const args = [
+          addresses.settlementToken!,
           keccak256(toBytes(`${input?.question || "alterford-market"}-${Date.now()}`)),
           metadataURI,
           ["YES", "NO"],
@@ -770,9 +826,27 @@ export function useWeb3Flow(
           BigInt(Math.floor(Date.now() / 1000) + Math.max(10, input?.resolvesInMinutes ?? 120) * 60),
           0,
           marketBondCategoryId(input?.category || marketCategory, isUnderworldMode),
-        ],
-      });
-      }),
+        ] as const;
+        const sponsor = gaslessChallengesAvailable && (challengeExecutionMode === "gasless" || walletKind === "embedded");
+        if (sponsor) {
+          if (!addresses.marketFactory) throw new Error("MarketFactory is not configured for this network.");
+          const permitData = await signSettlementPermit(addresses.marketFactory, createMarketCost);
+          const sponsoredArgs = [...args, permitData] as const;
+          await runSponsoredTx("Crear mercado", addresses.marketFactory, encodeFunctionData({
+            abi: marketFactoryAbi,
+            functionName: "createMarketWithPermit",
+            args: sponsoredArgs,
+          }), () => writeContractAsync({
+            address: addresses.marketFactory!, abi: marketFactoryAbi, functionName: "createMarketWithPermit",
+            chainId: desiredChainId, args: sponsoredArgs,
+          }), true);
+          return;
+        }
+        await runTx("Crear mercado", (contracts) => writeContractAsync({
+          address: contracts.marketFactory, abi: marketFactoryAbi, functionName: "createMarket",
+          chainId: desiredChainId, args,
+        }));
+      },
     );
 
   const createChallengeLabel = isUnderworldMode ? "Crear reto Underworld" : "Crear reto Vanilla";
@@ -781,9 +855,9 @@ export function useWeb3Flow(
       createChallengeLabel,
       [
         [hasEnoughChallengeBalance, `Necesitas ${formatUsdt(challengeCreateCost)} aUSDT para recompensa + bond.`],
-        [!needsChallengeApproval, `Primero autoriza aUSDT para el reto ${isUnderworldMode ? "Underworld" : "Vanilla"}.`],
+        [!needsChallengeApproval || gaslessChallengesAvailable, `Primero autoriza aUSDT para el reto ${isUnderworldMode ? "Underworld" : "Vanilla"}.`],
       ],
-      () => {
+      async () => {
       const challengeFactory = addresses.challengeFactory;
       if (!challengeFactory || !addresses.settlementToken) throw new Error("ChallengeFactory is not configured for this network.");
       const metadataURI = buildChallengeMetadataURI(input, isUnderworldMode);
@@ -802,16 +876,21 @@ export function useWeb3Flow(
         ),
         challengeCategoryId,
       ] as const;
+      const sponsor = gaslessChallengesAvailable && (challengeExecutionMode === "gasless" || walletKind === "embedded");
+      if (sponsor) {
+        const permitData = await signSettlementPermit(challengeFactory, challengeCreateCost);
+        const sponsoredArgs = [...args, permitData] as const;
+        return runSponsoredTx(createChallengeLabel, challengeFactory, encodeFunctionData({
+          abi: challengeFactoryAbi, functionName: "createChallengeWithPermit", args: sponsoredArgs,
+        }), () => writeContractAsync({
+          address: challengeFactory, abi: challengeFactoryAbi, functionName: "createChallengeWithPermit",
+          chainId: desiredChainId, args: sponsoredArgs,
+        }), true);
+      }
       return runChallengeTx(createChallengeLabel, encodeFunctionData({
-        abi: challengeFactoryAbi,
-        functionName: "createChallenge",
-        args,
+        abi: challengeFactoryAbi, functionName: "createChallenge", args,
       }), () => writeContractAsync({
-        address: challengeFactory,
-        abi: challengeFactoryAbi,
-        functionName: "createChallenge",
-        chainId: desiredChainId,
-        args,
+        address: challengeFactory, abi: challengeFactoryAbi, functionName: "createChallenge", chainId: desiredChainId, args,
       }));
       },
     );
@@ -822,47 +901,52 @@ export function useWeb3Flow(
       [
         [input.rewardPool > 0n, "La recompensa debe ser mayor que cero."],
         [hasEnoughBountyBalance, `Necesitas ${formatUsdt(bountyCreateCost)} aUSDT para recompensa + bond.`],
-        [!needsBountyApproval, "Primero prepara el permiso de aUSDT para este bounty."],
+        [!needsBountyApproval || gaslessChallengesAvailable, "Primero prepara el permiso de aUSDT para este bounty."],
       ],
-      () => runTx("Crear bounty", (contracts) => {
-        if (!contracts.bountyFactory) throw new Error("BountyFactory is not configured for this network.");
+      async () => {
+        if (!addresses.bountyFactory || !addresses.settlementToken) throw new Error("BountyFactory is not configured for this network.");
         const metadataURI = buildBountyMetadataURI(input, isBountyUnderworld);
         const rulesHash = keccak256(toBytes(`${input.title}-${input.description}-${Date.now()}`));
-        return writeContractAsync({
-          address: contracts.bountyFactory,
-          abi: bountyFactoryAbi,
-          functionName: "createBounty",
-          chainId: desiredChainId,
-          args: [
-            contracts.settlementToken,
-            input.rewardPool,
-            BigInt(Math.floor(Date.now() / 1_000) + Math.max(60, input.deadlineMinutes) * 60),
-            rulesHash,
-            metadataURI,
-            bountyCategoryId,
-          ],
-        });
-      }),
+        const args = [
+          addresses.settlementToken, input.rewardPool,
+          BigInt(Math.floor(Date.now() / 1_000) + Math.max(60, input.deadlineMinutes) * 60),
+          rulesHash, metadataURI, bountyCategoryId,
+        ] as const;
+        const sponsor = gaslessChallengesAvailable && (challengeExecutionMode === "gasless" || walletKind === "embedded");
+        if (sponsor) {
+          const permitData = await signSettlementPermit(addresses.bountyFactory, bountyCreateCost);
+          const sponsoredArgs = [...args, permitData] as const;
+          await runSponsoredTx("Crear bounty", addresses.bountyFactory, encodeFunctionData({
+            abi: bountyFactoryAbi, functionName: "createBountyWithPermit", args: sponsoredArgs,
+          }), () => writeContractAsync({
+            address: addresses.bountyFactory!, abi: bountyFactoryAbi, functionName: "createBountyWithPermit",
+            chainId: desiredChainId, args: sponsoredArgs,
+          }), true);
+          return;
+        }
+        await runTx("Crear bounty", (contracts) => writeContractAsync({
+          address: contracts.bountyFactory!, abi: bountyFactoryAbi, functionName: "createBounty",
+          chainId: desiredChainId, args,
+        }));
+      },
     );
 
   const submitBounty = (input: BountyActionInput) =>
     guardedTx(
       "Enviar propuesta al bounty",
       [[Boolean(input.evidenceURI?.trim()), "Añade una URL o referencia de evidencia antes de enviar."]],
-      () => runTx("Enviar propuesta al bounty", (contracts) => {
-        if (!contracts.bountyFactory) throw new Error("BountyFactory is not configured for this network.");
-        return writeContractAsync({
-          address: contracts.bountyFactory,
-          abi: bountyFactoryAbi,
-          functionName: "submitEvidence",
-          chainId: desiredChainId,
-          args: [
-            BigInt(input.bountyId || "1"),
-            keccak256(toBytes(input.evidenceURI!.trim())),
-            input.evidenceURI!.trim(),
-          ],
-        });
-      }),
+      async () => {
+        if (!addresses.bountyFactory) throw new Error("BountyFactory is not configured for this network.");
+        const args = [
+          BigInt(input.bountyId || "1"), keccak256(toBytes(input.evidenceURI!.trim())), input.evidenceURI!.trim(),
+        ] as const;
+        await runSponsoredTx("Enviar propuesta al bounty", addresses.bountyFactory, encodeFunctionData({
+          abi: bountyFactoryAbi, functionName: "submitEvidence", args,
+        }), () => writeContractAsync({
+          address: addresses.bountyFactory!, abi: bountyFactoryAbi, functionName: "submitEvidence",
+          chainId: desiredChainId, args,
+        }));
+      },
     );
 
   const resolveBounty = (input: BountyActionInput) =>
@@ -909,22 +993,27 @@ export function useWeb3Flow(
       "Aceptar reto",
       [
         [hasEnoughChallengeExecutorBalance, `Necesitas ${formatUsdt(challengeExecutorCost)} aUSDT para el bond de ejecutor.`],
-        [!needsChallengeExecutorApproval, "Primero autoriza aUSDT para aceptar retos."],
+        [!needsChallengeExecutorApproval || gaslessChallengesAvailable, "Primero autoriza aUSDT para aceptar retos."],
       ],
-      () => {
+      async () => {
       const challengeFactory = addresses.challengeFactory;
       if (!challengeFactory) throw new Error("ChallengeFactory is not configured for this network.");
       const args = [BigInt(input.challengeId || "1"), input.liveStreamURI || ""] as const;
+      const sponsor = gaslessChallengesAvailable && (challengeExecutionMode === "gasless" || walletKind === "embedded");
+      if (sponsor) {
+        const permitData = await signSettlementPermit(challengeFactory, challengeExecutorCost);
+        const sponsoredArgs = [...args, permitData] as const;
+        return runSponsoredTx("Aceptar reto", challengeFactory, encodeFunctionData({
+          abi: challengeFactoryAbi, functionName: "acceptChallengeWithPermit", args: sponsoredArgs,
+        }), () => writeContractAsync({
+          address: challengeFactory, abi: challengeFactoryAbi, functionName: "acceptChallengeWithPermit",
+          chainId: desiredChainId, args: sponsoredArgs,
+        }), true);
+      }
       return runChallengeTx("Aceptar reto", encodeFunctionData({
-        abi: challengeFactoryAbi,
-        functionName: "acceptChallenge",
-        args,
+        abi: challengeFactoryAbi, functionName: "acceptChallenge", args,
       }), () => writeContractAsync({
-        address: challengeFactory,
-        abi: challengeFactoryAbi,
-        functionName: "acceptChallenge",
-        chainId: desiredChainId,
-        args,
+        address: challengeFactory, abi: challengeFactoryAbi, functionName: "acceptChallenge", chainId: desiredChainId, args,
       }));
       },
     );
@@ -1108,17 +1197,28 @@ export function useWeb3Flow(
       "Confirmar prediccion",
       [
         [hasEnoughBetBalance, `Necesitas ${formatUsdt(betCost)} aUSDT para esta prediccion.`],
-        [!needsBetApproval, "Primero autoriza aUSDT para apostar."],
+        [!needsBetApproval || gaslessChallengesAvailable, "Primero autoriza aUSDT para apostar."],
       ],
-      () => runTx("Confirmar prediccion", (contracts) =>
-      writeContractAsync({
-        address: contracts.marketFactory,
-        abi: marketFactoryAbi,
-        functionName: "placeBet",
-        chainId: desiredChainId,
-        args: [BigInt(marketId || "1"), selectedOutcome, quickBetAmount],
-      }),
-      ),
+      async () => {
+        if (!addresses.marketFactory) throw new Error("MarketFactory is not configured for this network.");
+        const args = [BigInt(marketId || "1"), selectedOutcome, quickBetAmount] as const;
+        const sponsor = gaslessChallengesAvailable && (challengeExecutionMode === "gasless" || walletKind === "embedded");
+        if (sponsor) {
+          const permitData = await signSettlementPermit(addresses.marketFactory, betCost);
+          const sponsoredArgs = [...args, permitData] as const;
+          await runSponsoredTx("Confirmar prediccion", addresses.marketFactory, encodeFunctionData({
+            abi: marketFactoryAbi, functionName: "placeBetWithPermit", args: sponsoredArgs,
+          }), () => writeContractAsync({
+            address: addresses.marketFactory!, abi: marketFactoryAbi, functionName: "placeBetWithPermit",
+            chainId: desiredChainId, args: sponsoredArgs,
+          }), true);
+          return;
+        }
+        await runTx("Confirmar prediccion", (contracts) => writeContractAsync({
+          address: contracts.marketFactory, abi: marketFactoryAbi, functionName: "placeBet",
+          chainId: desiredChainId, args,
+        }));
+      },
     );
 
   const resolveMarket = (input: ResolveMarketInput) =>
@@ -1132,27 +1232,25 @@ export function useWeb3Flow(
       }),
     );
 
-  const claimReward = () =>
-    runTx("Cobrar ganancia", (contracts) =>
-      writeContractAsync({
-        address: contracts.marketFactory,
-        abi: marketFactoryAbi,
-        functionName: "claimReward",
-        chainId: desiredChainId,
-        args: [BigInt(marketId || "1")],
-      }),
-    );
+  const claimReward = async () => {
+    if (!addresses.marketFactory) throw new Error("MarketFactory is not configured for this network.");
+    const args = [BigInt(marketId || "1")] as const;
+    await runSponsoredTx("Cobrar ganancia", addresses.marketFactory, encodeFunctionData({
+      abi: marketFactoryAbi, functionName: "claimReward", args,
+    }), () => writeContractAsync({
+      address: addresses.marketFactory!, abi: marketFactoryAbi, functionName: "claimReward", chainId: desiredChainId, args,
+    }));
+  };
 
-  const claimRefund = () =>
-    runTx("Recibir reembolso", (contracts) =>
-      writeContractAsync({
-        address: contracts.marketFactory,
-        abi: marketFactoryAbi,
-        functionName: "claimRefund",
-        chainId: desiredChainId,
-        args: [BigInt(marketId || "1")],
-      }),
-    );
+  const claimRefund = async () => {
+    if (!addresses.marketFactory) throw new Error("MarketFactory is not configured for this network.");
+    const args = [BigInt(marketId || "1")] as const;
+    await runSponsoredTx("Recibir reembolso", addresses.marketFactory, encodeFunctionData({
+      abi: marketFactoryAbi, functionName: "claimRefund", args,
+    }), () => writeContractAsync({
+      address: addresses.marketFactory!, abi: marketFactoryAbi, functionName: "claimRefund", chainId: desiredChainId, args,
+    }));
+  };
 
   async function signXmrConversionAuthorization(input: XmrConversionAuthorization) {
     if (!account.address || account.address.toLowerCase() !== input.destination.toLowerCase()) {
@@ -1345,6 +1443,18 @@ function getErrorCode(error: unknown): number | undefined {
 function getBlockExplorerUrls(): string[] | undefined {
   if (!("blockExplorers" in targetChain)) return undefined;
   return targetChain.blockExplorers?.default?.url ? [targetChain.blockExplorers.default.url] : undefined;
+}
+
+function permitDataFromSignature(value: bigint, deadline: bigint, signature: Hex) {
+  if (signature.length !== 132) throw new Error("La wallet devolvio una firma de permiso invalida.");
+  const v = Number.parseInt(signature.slice(130, 132), 16);
+  return {
+    value,
+    deadline,
+    v: v < 27 ? v + 27 : v,
+    r: `0x${signature.slice(2, 66)}` as Hex,
+    s: `0x${signature.slice(66, 130)}` as Hex,
+  };
 }
 
 function buildMarketMetadataURI(input: CreateMarketInput | undefined, isUnderworldMode: boolean): string {

@@ -7,7 +7,7 @@ const config = { globalDailyLimit: 10, walletDailyLimit: 1, ipHourlyLimit: 10 };
 describe("SponsorshipLedger persistence", () => {
   it("restores committed idempotency records and rate limits", () => {
     const first = new SponsorshipLedger(config);
-    first.reserve("relay-key-0001", user, "127.0.0.1", "acceptChallenge", 100_000);
+    first.reserve("relay-key-0001", user, "127.0.0.1", "acceptChallengeWithPermit", 100_000);
     first.commit("relay-key-0001", "task-1");
 
     const restored = new SponsorshipLedger(config, first.snapshot());

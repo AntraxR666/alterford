@@ -248,7 +248,8 @@ contract AlterfordCoreTest {
         MockSettlementToken token = new MockSettlementToken();
         CreationBondPolicy policy = new CreationBondPolicy(address(this));
         CreationBondContextResolver resolver = new CreationBondContextResolver(address(this));
-        MarketFactory factory = new MarketFactory(address(this), address(policy), address(resolver));
+        MarketFactory factory =
+            new MarketFactory(address(this), address(policy), address(resolver), address(0xF0));
         string[] memory outcomes = new string[](2);
         outcomes[0] = "YES";
         outcomes[1] = "NO";
@@ -289,7 +290,8 @@ contract AlterfordCoreTest {
         MockSettlementToken token = new MockSettlementToken();
         CreationBondPolicy policy = new CreationBondPolicy(address(this));
         CreationBondContextResolver resolver = new CreationBondContextResolver(address(this));
-        BountyFactory factory = new BountyFactory(address(this), address(policy), address(resolver));
+        BountyFactory factory =
+            new BountyFactory(address(this), address(policy), address(resolver), address(0xF0));
         token.mint(address(this), 1_000_000);
 
         try factory.createBounty(
@@ -308,7 +310,8 @@ contract AlterfordCoreTest {
         MockSettlementToken token = new MockSettlementToken();
         CreationBondPolicy policy = new CreationBondPolicy(address(this));
         CreationBondContextResolver resolver = new CreationBondContextResolver(address(this));
-        MarketFactory factory = new MarketFactory(address(this), address(policy), address(resolver));
+        MarketFactory factory =
+            new MarketFactory(address(this), address(policy), address(resolver), address(0xF0));
         MarketUser creator = new MarketUser();
         MarketUser alice = new MarketUser();
         MarketUser bob = new MarketUser();
@@ -347,7 +350,8 @@ contract AlterfordCoreTest {
         MockSettlementToken token = new MockSettlementToken();
         CreationBondPolicy policy = new CreationBondPolicy(address(this));
         CreationBondContextResolver resolver = new CreationBondContextResolver(address(this));
-        MarketFactory factory = new MarketFactory(address(this), address(policy), address(resolver));
+        MarketFactory factory =
+            new MarketFactory(address(this), address(policy), address(resolver), address(0xF0));
         MarketUser creator = new MarketUser();
         MarketUser alice = new MarketUser();
 
@@ -380,7 +384,8 @@ contract AlterfordCoreTest {
         MockSettlementToken token = new MockSettlementToken();
         CreationBondPolicy policy = new CreationBondPolicy(address(this));
         CreationBondContextResolver resolver = new CreationBondContextResolver(address(this));
-        MarketFactory factory = new MarketFactory(address(this), address(policy), address(resolver));
+        MarketFactory factory =
+            new MarketFactory(address(this), address(policy), address(resolver), address(0xF0));
         MarketUser creator = new MarketUser();
         MarketUser alice = new MarketUser();
 

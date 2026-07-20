@@ -1103,7 +1103,7 @@ function ChallengesView({
             <span>Otra wallet debe aceptar el reto y bloquear exclusivamente su bond de ejecutor.</span>
           </div>
         </div>
-        <div className="execution-mode" aria-label="Modo de envio del reto">
+        <div className="execution-mode" aria-label="Modo de envio de operaciones">
           <button
             className={executionMode === "wallet" ? "selected" : ""}
             aria-pressed={executionMode === "wallet"}
@@ -1122,9 +1122,9 @@ function ChallengesView({
         </div>
         <p className="help-text">
           {executionMode === "gasless"
-            ? "Firmaras una autorizacion EIP-712. Si el relay falla, no se moveran fondos y Alterford ofrecera el siguiente intento con Wallet."
+            ? "Firmaras una autorizacion EIP-712 por el importe exacto. Este modo tambien se aplica a mercados, predicciones y bounties; si el relay falla, no se moveran fondos."
             : gaslessAvailable
-              ? "Ruta Wallet lista. Es la opcion mas fiable; usa una pequena cantidad de ETH de Base Sepolia para gas. Sin gas queda disponible como alternativa."
+              ? "Ruta Wallet lista. Usa ETH de Base Sepolia para gas. Sin gas esta disponible para mercados, retos, bounties, predicciones y cobros."
               : "Ruta Wallet lista. Usa una pequena cantidad de ETH de Base Sepolia de prueba; el patrocinio no esta confirmado ahora."}
         </p>
         <div className="builder-stage"><strong>1. Define que debe ocurrir</strong><span>Escribe una regla concreta y una prueba que cualquier persona pueda revisar.</span></div>

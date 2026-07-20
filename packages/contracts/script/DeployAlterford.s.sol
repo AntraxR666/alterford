@@ -35,9 +35,12 @@ contract DeployAlterford {
             : CreationBondPolicy(creationBondPolicyAddress);
         CreationBondContextResolver bondContextResolver = new CreationBondContextResolver(admin);
         AlterfordForwarder forwarder = new AlterfordForwarder();
-        new MarketFactory(admin, address(creationBondPolicy), address(bondContextResolver));
-        BountyFactory bountyFactory =
-            new BountyFactory(admin, address(creationBondPolicy), address(bondContextResolver));
+        new MarketFactory(
+            admin, address(creationBondPolicy), address(bondContextResolver), address(forwarder)
+        );
+        BountyFactory bountyFactory = new BountyFactory(
+            admin, address(creationBondPolicy), address(bondContextResolver), address(forwarder)
+        );
         new ChallengeFactory(
             admin, address(creationBondPolicy), address(bondContextResolver), address(forwarder)
         );

@@ -3,15 +3,19 @@ import { resolve } from "node:path";
 
 const chainId = process.env.CHAIN_ID || process.argv[2] || "84532";
 const deployment = JSON.parse(await readFile(resolve("deployments", `${chainId}.json`), "utf8"));
+const marketFactory = deployment.contracts?.marketFactory?.address;
+const bountyFactory = deployment.contracts?.bountyFactory?.address;
 const challengeFactory = deployment.contracts?.challengeFactory?.address;
 const forwarder = deployment.contracts?.alterfordForwarder?.address;
-if (!challengeFactory || !forwarder) {
-  throw new Error(`deployments/${chainId}.json is missing ChallengeFactory or AlterfordForwarder.`);
+if (!marketFactory || !bountyFactory || !challengeFactory || !forwarder) {
+  throw new Error(`deployments/${chainId}.json is missing a factory or AlterfordForwarder.`);
 }
 
 const env = [
   `CHAIN_ID=${deployment.chainId}`,
   `RPC_URL=${deployment.rpcUrl}`,
+  `MARKET_FACTORY_ADDRESS=${marketFactory}`,
+  `BOUNTY_FACTORY_ADDRESS=${bountyFactory}`,
   `CHALLENGE_FACTORY_ADDRESS=${challengeFactory}`,
   `ALTERFORD_FORWARDER_ADDRESS=${forwarder}`,
   `RELAY_PROVIDER=${process.env.RELAY_PROVIDER || (String(deployment.chainId) === "84532" ? "biconomy" : "disabled")}`,
