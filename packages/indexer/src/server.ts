@@ -59,7 +59,7 @@ export function startReadServer(
     return send(response, { error: "Not found" });
   });
 
-  server.listen(port);
+  server.listen(port, "0.0.0.0");
   return server;
 }
 

@@ -81,4 +81,4 @@ setInterval(() => {
   tick().catch((error) => console.error(error));
 }, Number(process.env.POLL_INTERVAL_MS || "12000"));
 
-console.log(`Alterford indexer listening on http://127.0.0.1:${port}`);
+console.log(`Alterford indexer listening on http://0.0.0.0:${port}`);
