@@ -142,4 +142,20 @@ describe("embedded wallet controller", () => {
 
     await expect(controller.connect()).rejects.toThrow("no devolvio una wallet EVM");
   });
+
+  it("handles Web3Auth v11 direct provider return from connectModal or client.provider", async () => {
+    const evmProvider = provider();
+    const client: EmbeddedWalletClient = {
+      connected: false,
+      initModal: vi.fn(async () => undefined),
+      connectModal: vi.fn(async () => evmProvider),
+      logout: vi.fn(async () => undefined),
+      switchChain: vi.fn(async () => undefined),
+    };
+    const controller = createEmbeddedWalletController(async () => client);
+
+    await expect(controller.connect()).resolves.toBe(evmProvider);
+    expect(client.initModal).toHaveBeenCalledTimes(1);
+    expect(client.connectModal).toHaveBeenCalledTimes(1);
+  });
 });

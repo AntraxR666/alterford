@@ -22,6 +22,7 @@ import {
   UploadCloud,
   UserRound,
   WalletCards,
+  X,
   Zap,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -142,6 +143,7 @@ export function App() {
       return true;
     }
   });
+  const [showConnectModal, setShowConnectModal] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>("markets");
   const [createQuestion, setCreateQuestion] = useState("ETH cerrara sobre $4,000 esta semana?");
   const [createCategory, setCreateCategory] = useState("Crypto");
@@ -318,27 +320,22 @@ export function App() {
               <WalletCards size={16} /> {web3.accountLabel}
             </button>
           ) : (
-            <>
-              {web3.hasSocialLogin && (
-                <button className="wallet-button" onClick={web3.connectSocialWallet} disabled={web3.isConnecting}>
-                  <Mail size={16} /> Entrar con email
-                </button>
-              )}
-              <button className="wallet-button primary" onClick={web3.connectWallet} disabled={web3.isConnecting}>
-                <WalletCards size={16} />
-                {web3.isConnecting ? "Conectando" : `Conectar ${preferredConnectorName}`}
-              </button>
-              {web3.metaMaskAvailable && web3.hasWalletConnect && (
-                <button className="wallet-button" onClick={web3.connectWalletConnect} disabled={web3.isConnecting}>
-                  <WalletCards size={16} /> Otras wallets
-                </button>
-              )}
-            </>
+            <button
+              className="wallet-button primary"
+              onClick={() => setShowConnectModal(true)}
+              disabled={web3.isConnecting}
+            >
+              <WalletCards size={16} />
+              {web3.isConnecting ? "Conectando..." : "Acceder / Conectar Wallet"}
+            </button>
           )}
         </div>
       </header>
 
       {showIntro && <FirstRunIntro onDismiss={dismissIntro} />}
+      {showConnectModal && !web3.account.isConnected && (
+        <ConnectWalletModal web3={web3} onClose={() => setShowConnectModal(false)} />
+      )}
 
       <section className="status-strip">
         <StatusItem icon={<CheckCircle2 size={17} />} label="Conectar wallet" value="Gratis" />
@@ -2689,4 +2686,99 @@ function getChallengeModeration(title: string, evidence: string) {
     level: "Reto revisable",
     message: "Puede crearse con bond on-chain, evidencia obligatoria y arbitraje si hay disputa.",
   };
+}
+
+function ConnectWalletModal({
+  web3,
+  onClose,
+}: {
+  web3: ReturnType<typeof useWeb3Flow>;
+  onClose: () => void;
+}) {
+  return (
+    <div className="connect-modal-backdrop" onClick={onClose}>
+      <div className="connect-modal-content" onClick={(e) => e.stopPropagation()}>
+        <div className="connect-modal-header">
+          <div>
+            <h3>Conectar a Alterford</h3>
+            <p className="connect-modal-subtitle">Ecosistema Web3 sin riesgo de la casa en Base</p>
+          </div>
+          <button className="connect-modal-close" onClick={onClose} aria-label="Cerrar">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="connect-options-list">
+          {web3.hasSocialLogin && (
+            <button
+              className="connect-card-option primary-option"
+              onClick={() => web3.connectSocialWallet()}
+              disabled={web3.isConnecting}
+            >
+              <div className="connect-option-icon">
+                <Mail size={22} />
+              </div>
+              <div className="connect-option-info">
+                <h4>Entrar con Email o Google</h4>
+                <p>Acceso facil sin frase semilla ni configuraciones complejas</p>
+              </div>
+              <ChevronRight size={18} />
+            </button>
+          )}
+
+          <button
+            className="connect-card-option"
+            onClick={() => web3.connectWallet()}
+            disabled={web3.isConnecting}
+          >
+            <div className="connect-option-icon">
+              <WalletCards size={22} />
+            </div>
+            <div className="connect-option-info">
+              <h4>MetaMask / Wallet del navegador</h4>
+              <p>Conexion directa con la extension instalada en tu navegador</p>
+            </div>
+            <ChevronRight size={18} />
+          </button>
+
+          {web3.hasWalletConnect && (
+            <button
+              className="connect-card-option"
+              onClick={() => web3.connectWalletConnect()}
+              disabled={web3.isConnecting}
+            >
+              <div className="connect-option-icon">
+                <Sparkles size={22} />
+              </div>
+              <div className="connect-option-info">
+                <h4>WalletConnect / Movil (QR)</h4>
+                <p>Escanea desde Trust Wallet, Coinbase Wallet o la app de tu celular</p>
+              </div>
+              <ChevronRight size={18} />
+            </button>
+          )}
+        </div>
+
+        {web3.isConnecting && (
+          <div className="connect-status-box pending">
+            <div className="spinner" />
+            <p>Conectando wallet de forma segura...</p>
+          </div>
+        )}
+
+        {web3.tx.status === "failed" && web3.tx.error && (
+          <div className="connect-status-box error">
+            <AlertTriangle size={18} />
+            <p>{web3.tx.error}</p>
+          </div>
+        )}
+
+        <div className="connect-modal-footer">
+          <p className="privacy-note">
+            <ShieldCheck size={14} opacity={0.8} /> Tus fondos se custodian en tu propia wallet. Sin intermediarios ni registros centralizados.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
 }

@@ -19,6 +19,18 @@ describe("wallet connection selection", () => {
     expect(selectMetaMaskConnector(connectors)).toEqual(connectors[1]);
   });
 
+  it("selects MetaMask using EIP-6963 RDNS or injected fallback", () => {
+    const eip6963Connectors = [
+      connector("io.metamask", "MetaMask"),
+    ];
+    expect(selectMetaMaskConnector(eip6963Connectors)).toEqual(eip6963Connectors[0]);
+
+    const injectedFallback = [
+      connector("injected", "Browser Wallet"),
+    ];
+    expect(selectMetaMaskConnector(injectedFallback)).toEqual(injectedFallback[0]);
+  });
+
   it("selects WalletConnect without falling back to an unrelated connector", () => {
     const connectors = [
       connector("metaMask", "MetaMask"),

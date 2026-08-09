@@ -9,10 +9,13 @@ export interface EmbeddedProvider {
 
 export interface EmbeddedWalletClient {
   readonly connected: boolean;
+  readonly provider?: EmbeddedProvider | null;
   readonly connection?: { ethereumProvider: EmbeddedProvider | null } | null;
   readonly cachedConnector?: string | null;
-  init(): Promise<void>;
-  connect(): Promise<{ ethereumProvider: EmbeddedProvider | null } | null>;
+  init?(): Promise<void>;
+  initModal?(): Promise<void>;
+  connect?(): Promise<unknown>;
+  connectModal?(): Promise<unknown>;
   logout(options?: { cleanup: boolean }): Promise<void>;
   switchChain(params: { chainId: string }): Promise<void>;
   on?(event: string, listener: (...args: unknown[]) => void): void;
@@ -27,6 +30,28 @@ export interface EmbeddedWalletController {
   provider(): EmbeddedProvider | null;
 }
 
+export function extractProvider(candidate: unknown, client?: EmbeddedWalletClient | null): EmbeddedProvider | null {
+  if (candidate && typeof (candidate as EmbeddedProvider).request === "function") {
+    return candidate as EmbeddedProvider;
+  }
+  if (
+    candidate &&
+    typeof (candidate as { ethereumProvider?: EmbeddedProvider }).ethereumProvider?.request === "function"
+  ) {
+    return (candidate as { ethereumProvider: EmbeddedProvider }).ethereumProvider;
+  }
+  if (client?.provider && typeof client.provider.request === "function") {
+    return client.provider;
+  }
+  if (
+    client?.connection?.ethereumProvider &&
+    typeof client.connection.ethereumProvider.request === "function"
+  ) {
+    return client.connection.ethereumProvider;
+  }
+  return null;
+}
+
 export function createEmbeddedWalletController(
   factory: () => Promise<EmbeddedWalletClient>,
 ): EmbeddedWalletController {
@@ -37,7 +62,11 @@ export function createEmbeddedWalletController(
   async function initializedClient() {
     clientPromise ??= factory();
     initialization ??= clientPromise.then(async (client) => {
-      await client.init();
+      if (typeof client.initModal === "function") {
+        await client.initModal();
+      } else if (typeof client.init === "function") {
+        await client.init();
+      }
       return client;
     });
     return initialization;
@@ -45,15 +74,23 @@ export function createEmbeddedWalletController(
 
   return {
     async connect() {
-      if (activeProvider) return activeProvider;
       const client = await initializedClient();
-      const connection = client.connected && client.connection
-        ? client.connection
-        : await client.connect();
-      if (!connection?.ethereumProvider) {
+      const existing = activeProvider ?? extractProvider(undefined, client);
+      if (existing && (client.connected || Boolean(activeProvider))) {
+        activeProvider = existing;
+        return activeProvider;
+      }
+      const connectMethod = typeof client.connectModal === "function"
+        ? client.connectModal.bind(client)
+        : typeof client.connect === "function"
+          ? client.connect.bind(client)
+          : null;
+      const res = connectMethod ? await connectMethod() : null;
+      const provider = extractProvider(res, client);
+      if (!provider) {
         throw new Error("Web3Auth no devolvio una wallet EVM.");
       }
-      activeProvider = connection.ethereumProvider;
+      activeProvider = provider;
       return activeProvider;
     },
     async disconnect() {
@@ -67,7 +104,7 @@ export function createEmbeddedWalletController(
       if (!client.connected && client.cachedConnector) {
         await waitForCachedConnection(client);
       }
-      activeProvider = client.connected ? client.connection?.ethereumProvider ?? null : null;
+      activeProvider = client.connected ? extractProvider(undefined, client) : null;
       return activeProvider;
     },
     async switchChain(chainId) {
@@ -81,7 +118,7 @@ export function createEmbeddedWalletController(
 }
 
 function waitForCachedConnection(client: EmbeddedWalletClient): Promise<void> {
-  const hasProvider = () => client.connected && Boolean(client.connection?.ethereumProvider);
+  const hasProvider = () => client.connected && Boolean(extractProvider(undefined, client));
   if (hasProvider()) return Promise.resolve();
 
   return new Promise((resolve) => {

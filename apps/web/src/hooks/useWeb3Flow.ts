@@ -485,8 +485,8 @@ export function useWeb3Flow(
 
   async function connectWallet() {
     const connector = metaMaskAvailable
-      ? selectMetaMaskConnector(connectors)
-      : walletConnectConnector;
+      ? (selectMetaMaskConnector(connectors) ?? walletConnectConnector ?? connectors.find((item) => item.id !== "web3auth"))
+      : (walletConnectConnector ?? selectMetaMaskConnector(connectors) ?? connectors.find((item) => item.id !== "web3auth"));
     await connectUsing(connector, preferredConnectorName);
   }
 

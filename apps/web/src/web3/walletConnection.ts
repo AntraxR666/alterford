@@ -13,8 +13,17 @@ interface InjectedWalletProvider {
 }
 
 export function selectMetaMaskConnector<T extends WalletConnectorLike>(connectors: readonly T[]): T | undefined {
-  return connectors.find((connector) => connector.id.toLowerCase() === "metamask")
-    ?? connectors.find((connector) => connector.name.toLowerCase() === "metamask");
+  return (
+    connectors.find((connector) => {
+      const id = connector.id.toLowerCase();
+      return id === "metamask" || id === "io.metamask" || id === "metamasksdk";
+    }) ??
+    connectors.find((connector) => connector.name.toLowerCase().includes("metamask")) ??
+    connectors.find((connector) => {
+      const id = connector.id.toLowerCase();
+      return id === "injected" || connector.name.toLowerCase().includes("injected");
+    })
+  );
 }
 
 export function selectWalletConnectConnector<T extends WalletConnectorLike>(connectors: readonly T[]): T | undefined {
