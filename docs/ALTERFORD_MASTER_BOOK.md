@@ -1,7 +1,7 @@
 # Libro Maestro de Alterford
 
 Estado: fuente de verdad operativa del proyecto Alterford v1.2 en desarrollo, compatible con la Constitucion v1.1.
-Ultima actualizacion: 2026-07-22.
+Ultima actualizacion: 2026-08-08.
 Repositorio local: `C:\Users\Windows 11 Pro\Documents\apuestas`.
 
 Este documento consolida el estado real del proyecto, decisiones vigentes, arquitectura, contratos, despliegues, variables, comandos oficiales y pendientes. Debe actualizarse cada vez que cambien contratos, direcciones, red, arquitectura, scripts, credenciales no sensibles, checklist de produccion o estado de lanzamiento.
@@ -58,16 +58,16 @@ Terminado:
 - Verificacion de contratos operativa.
 - Indexer persistente implementado con store JSON, reorg handling, snapshots y endpoints read-only.
 - Frontend React/Vite conectado a wagmi/viem/WalletConnect/Reown, con soporte Vanilla/Underworld.
-- Indexer publico en Railway con `CONFIRMATIONS=6`, RPC privado y volumen persistente en `/data`.
-- Frontend PWA publico en Railway: `https://alterford-web-production.up.railway.app`.
+- Indexer publico en Railway con `CONFIRMATIONS=6`, RPCs publicos con fallback y volumen persistente en `/app/data`.
+- Frontend PWA publico vigente en Railway: `https://alterford-web-production-748c.up.railway.app`.
 - PWA estatica final publicada en IPFS mediante Pinata con CID `bafybeighmwesy6luned6iglmmfygt4mjscsvcxjht7xf3x5dtznqcn6esa`.
-- Tests TypeScript y Solidity pasando en la ultima verificacion registrada: `196/196` pruebas de paquetes y `50/50` pruebas Foundry.
+- Tests TypeScript y Solidity pasando en la ultima verificacion registrada: `209/209` pruebas de paquetes y `55/55` pruebas Foundry.
 - Smoke E2E Base Sepolia historico del deployment Phase 1 completado con mercado `2`: mint, approve, create market, bet YES, bet NO, resolve y claim.
 - Smoke E2E Base Sepolia historico del deployment Phase 1 completado con reto `1`: mint, approve, create challenge, cancel y refund de bond/recompensa.
 - Indexer Railway actualizado al deployment vigente, con `CONFIRMATIONS=6`, read model limpio desde el bloque `45235925`, cursor sincronizado y `0` errores.
 - `AlterfordForwarder` EIP-2771 y `ChallengeFactory` con `_msgSender()` implementados, con nonce, deadline, domain separator dinamico y replay protection de OpenZeppelin.
 - Gateway server-only implementado con politica allowlist de acciones, simulacion previa, limites por wallet/IP/global, idempotencia y ledger persistente atomico.
-- Gateway publico en Railway: `https://alterford-gateway-production.up.railway.app`.
+- Gateway publico vigente en Railway: `https://alterford-gateway-production-c5f8.up.railway.app`, con volumen persistente en `/app/data`.
 - Integracion vigente de Biconomy MEE para relay gasless en Base Sepolia, sin exponer credenciales privadas al navegador.
 - MetaMask Embedded Wallets/Web3Auth integrado como conector social MPC opcional sin reemplazar MetaMask, Trust, Binance Web3 Wallet ni WalletConnect.
 - Fiat on-ramp Transak implementado mediante sesiones de backend de un solo uso; las credenciales privadas no entran al build estatico.
@@ -76,10 +76,10 @@ Terminado:
 - Los contratos nunca reciben XMR: el proveedor convierte y liquida USDC directamente a la wallet del usuario; solo despues de verificarse on-chain ese USDC puede utilizarse en Alterford.
 - Las ocho acciones core permitidas de retos usan firma EIP-712 y relay patrocinado cuando el gateway esta activo; conservan ejecucion directa cuando no esta configurado.
 - Gateway Docker construido y health/config comprobados.
-- Verificacion vigente del `2026-07-22`: `50/50` tests Foundry, `196/196` tests de paquetes TS, typecheck completo, preflight de variables y build PWA estatico aprobados.
+- Verificacion vigente del `2026-08-08`: `55/55` tests Foundry, `209/209` tests de paquetes TS, typecheck completo y build PWA estatico aprobados. El frontend, gateway e indexer nuevos responden `200`; el indexer procesa Base Sepolia con `0` errores.
 - Smoke publico del `2026-07-15`: MetaMask conectada, approve confirmado, mercado `1` creado e indexado, apuesta `0.5 aUSDT` confirmada e indexada; indexer con `0` errores.
 - Actualizacion local del `2026-07-17`: API, proveedor SideShift normalizado, verificador Base, nonce EIP-712 compartido en SDK y panel de conversion XMR no custodial implementados. El rail custodial anterior queda deprecado y deshabilitado.
-- La cuenta de integracion SideShift ya fue seleccionada y `XMR_PROVIDER_ACCOUNT_ID` y `XMR_PROVIDER_SECRET` estan almacenados como variables privadas en Railway. `XMR_CONVERSION_PROVIDER` permanece en `disabled`.
+- La cuenta de integracion SideShift ya fue seleccionada, pero sus credenciales no se migraron al nuevo Railway de testnet. `XMR_CONVERSION_PROVIDER=disabled` permanece fijado hasta Base Mainnet y la prueba canary XMR -> USDC.
 - Verificacion local del `2026-07-17`: `pnpm typecheck`, `pnpm build` y `134/134` pruebas de paquetes aprobadas. Se conservan como evidencia previa `37/37` pruebas del pipeline web, `48/48` pruebas Solidity y Slither sobre `85` contratos con `98` detectores y `0` resultados; no hubo cambios Solidity en el cierre XMR.
 - Deploy local limpio, demos E2E de mercado y reto, indexacion de `20` eventos y recuperacion del journal tras reinicio aprobados con el resolver autoritativo.
 - Smoke Base Sepolia vigente aprobado: mercados reales creados y apostados, reto creado/cancelado y ambos tipos de evento visibles en el indexer publico sin errores.
@@ -266,7 +266,7 @@ VITE_CHAIN_ID=84532
 VITE_LOCAL_RPC_URL=http://127.0.0.1:8545
 VITE_BASE_SEPOLIA_RPC_URL=https://sepolia.base.org
 VITE_WALLETCONNECT_PROJECT_ID=502d1a6819ee42e793e15c5f90603c42
-VITE_APP_URL=https://alterford-web-production.up.railway.app
+VITE_APP_URL=https://alterford-web-production-748c.up.railway.app
 VITE_SETTLEMENT_TOKEN_ADDRESS=0x237a9d70e5f521617be81ffca47155659c238b14
 VITE_CREATION_BOND_POLICY_ADDRESS=0x7b881b34eb2319d4e52b29f5cb703a2d6a7c7278
 VITE_BOND_CONTEXT_RESOLVER_ADDRESS=0x7f3fd8f3e3e9440647925ab720d4506c0cc193bf
@@ -274,8 +274,8 @@ VITE_ALTERFORD_FORWARDER_ADDRESS=0x7d0020a5129fd8c987ee93b06bc41e56f699e40a
 VITE_MARKET_FACTORY_ADDRESS=0x2f4ded37ae8738b14373e920bf9c46d23c3afe2c
 VITE_BOUNTY_FACTORY_ADDRESS=0x4a3bfcce57d7d53eafaa692b947c7d39737879c4
 VITE_CHALLENGE_FACTORY_ADDRESS=0xfbe5188bdc06b0675cec8f325da7a4de3f1f5067
-VITE_GATEWAY_URL=https://alterford-gateway-production.up.railway.app
-VITE_INDEXER_URL=https://web-production-73e1b.up.railway.app
+VITE_GATEWAY_URL=https://alterford-gateway-production-c5f8.up.railway.app
+VITE_INDEXER_URL=https://alterford-indexer-production.up.railway.app
 ```
 
 Variables Base Sepolia indexer generadas en `deployments/84532.indexer.env`:
@@ -510,10 +510,10 @@ Estado:
 - Implementado en TypeScript.
 - Soporta listener, projections, persistent store, reorg checks, snapshots y API read-only.
 - Base Sepolia env generado en `deployments/84532.indexer.env`.
-- Servicio publico: `https://web-production-73e1b.up.railway.app`.
+- Servicio publico vigente: `https://alterford-indexer-production.up.railway.app`.
 - Base Sepolia usa `START_BLOCK=45235925`, bloque inicial indexable del deployment vigente.
 - Railway usa el RPC publico de Base Sepolia como primario y conserva soporte de endpoints alternativos mediante `RPC_URLS`.
-- Opera con `CONFIRMATIONS=6`, polling de 12 segundos y volumen persistente Railway en `/data`.
+- Opera con `CONFIRMATIONS=6`, polling de 12 segundos y volumen persistente Railway en `/app/data`.
 - Persistencia verificada mediante redeploy: journal y cursor sobrevivieron al reinicio, cadena `84532`, cero errores.
 
 Endpoints definidos en runbook:
