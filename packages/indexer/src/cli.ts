@@ -4,9 +4,11 @@ import { pollMarketFactoryEvents } from "./listener.js";
 import { createIndexerMetrics, createStructuredLogger, renderHealth } from "./observability.js";
 import { startReadServer } from "./server.js";
 import { loadIndexerState, replayPersistedJournal, snapshotIndexerState } from "./store.js";
+import { resolveRpcUrls } from "./rpcConfig.js";
 
 const chainId = Number(process.env.CHAIN_ID || "31337");
-const rpcUrl = process.env.RPC_URL || "http://127.0.0.1:8545";
+const rpcUrls = resolveRpcUrls(process.env, chainId);
+const rpcUrl = rpcUrls[0];
 const marketFactory = process.env.MARKET_FACTORY_ADDRESS as Address | undefined;
 const bountyFactory = process.env.BOUNTY_FACTORY_ADDRESS as Address | undefined;
 const challengeFactory = process.env.CHALLENGE_FACTORY_ADDRESS as Address | undefined;
@@ -46,6 +48,7 @@ async function tick() {
     const before = indexerState.projection.processedEventIds.size;
     await pollMarketFactoryEvents(indexerState, {
       rpcUrl,
+      rpcUrls,
       chainId,
       marketFactory: requiredMarketFactory,
       bountyFactory,

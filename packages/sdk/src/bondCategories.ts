@@ -1,4 +1,5 @@
 import { keccak256, toBytes, type Hex } from "viem";
+import type { ChallengeFundingModel } from "./types.js";
 
 export const BOND_CATEGORY_KEYS = {
   SPORTS: "SPORTS",
@@ -15,6 +16,8 @@ export const BOND_CATEGORY_KEYS = {
   UNDERWORLD_BOUNTY: "UNDERWORLD_BOUNTY",
   VANILLA_CHALLENGE: "VANILLA_CHALLENGE",
   UNDERWORLD_CHALLENGE: "UNDERWORLD_CHALLENGE",
+  VANILLA_PERFORMER_OFFER: "VANILLA_PERFORMER_OFFER",
+  UNDERWORLD_PERFORMER_OFFER: "UNDERWORLD_PERFORMER_OFFER",
 } as const;
 
 export type BondCategoryKey = keyof typeof BOND_CATEGORY_KEYS;
@@ -42,7 +45,13 @@ export function marketBondCategoryId(category: string, underworld: boolean): Hex
   return bondCategoryId("VANILLA_MARKET");
 }
 
-export function challengeBondCategoryId(underworld = true): Hex {
+export function challengeBondCategoryId(
+  underworld = true,
+  fundingModel: ChallengeFundingModel = "Sponsored",
+): Hex {
+  if (fundingModel === "PerformerOffer") {
+    return bondCategoryId(underworld ? "UNDERWORLD_PERFORMER_OFFER" : "VANILLA_PERFORMER_OFFER");
+  }
   return bondCategoryId(underworld ? "UNDERWORLD_CHALLENGE" : "VANILLA_CHALLENGE");
 }
 

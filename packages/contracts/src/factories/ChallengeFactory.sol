@@ -13,6 +13,11 @@ import { ERC2771Context } from "@openzeppelin/contracts/metatx/ERC2771Context.so
 import { IERC20Permit } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 
 contract ChallengeFactory is Governed, ReentrancyGuardLite, ERC2771Context {
+    enum ChallengeFundingModel {
+        Sponsored,
+        PerformerOffer
+    }
+
     struct Challenge {
         address creator;
         address executor;
@@ -52,6 +57,10 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite, ERC2771Context {
     uint64 public constant MIN_STANDARD_RESOLUTION_WINDOW = 12 hours;
     uint64 public constant MAX_STANDARD_RESOLUTION_WINDOW = 24 hours;
     uint64 public constant HIGH_RISK_RESOLUTION_WINDOW = 48 hours;
+    bytes32 private constant VANILLA_PERFORMER_OFFER_CATEGORY =
+        keccak256("VANILLA_PERFORMER_OFFER");
+    bytes32 private constant UNDERWORLD_PERFORMER_OFFER_CATEGORY =
+        keccak256("UNDERWORLD_PERFORMER_OFFER");
 
     uint256 public nextChallengeId = 1;
     CreationBondPolicy public bondPolicy;
@@ -60,6 +69,8 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite, ERC2771Context {
     mapping(uint256 => Challenge) public challenges;
     mapping(uint256 => uint256) public bondByChallenge;
     mapping(uint256 => uint256) public executorBondByChallenge;
+    mapping(uint256 => ChallengeFundingModel) public fundingModelByChallenge;
+    mapping(uint256 => bool) public rewardEscrowedByChallenge;
     mapping(uint256 => bool) public bondFinalized;
     mapping(uint256 => bool) public rewardFinalized;
     mapping(uint256 => ResolutionProposal) public resolutionProposalByChallenge;
@@ -77,6 +88,15 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite, ERC2771Context {
     );
     event ChallengeAccepted(
         uint256 indexed challengeId, address indexed executor, uint256 executorBond
+    );
+    event ChallengeFundingModelSelected(
+        uint256 indexed challengeId,
+        ChallengeFundingModel fundingModel,
+        address indexed performer,
+        address indexed sponsor
+    );
+    event ChallengeRewardFunded(
+        uint256 indexed challengeId, address indexed sponsor, uint256 rewardPool
     );
     event ChallengeLiveStreamUpdated(
         uint256 indexed challengeId, address indexed actor, string liveStreamURI
@@ -200,7 +220,14 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite, ERC2771Context {
         bytes32 categoryId
     ) external nonReentrant whenNotPaused returns (uint256 challengeId) {
         return _createChallenge(
-            settlementToken, rewardPool, rulesHash, metadataURI, deadline, categoryId, _actor()
+            settlementToken,
+            rewardPool,
+            rulesHash,
+            metadataURI,
+            deadline,
+            categoryId,
+            _actor(),
+            _fundingModelFor(categoryId)
         );
     }
 
@@ -224,7 +251,14 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite, ERC2771Context {
                 permitData.s
             );
         return _createChallenge(
-            settlementToken, rewardPool, rulesHash, metadataURI, deadline, categoryId, _actor()
+            settlementToken,
+            rewardPool,
+            rulesHash,
+            metadataURI,
+            deadline,
+            categoryId,
+            _actor(),
+            _fundingModelFor(categoryId)
         );
     }
 
@@ -235,7 +269,8 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite, ERC2771Context {
         string memory metadataURI,
         uint256 deadline,
         bytes32 categoryId,
-        address creator
+        address creator,
+        ChallengeFundingModel fundingModel
     ) private returns (uint256 challengeId) {
         if (settlementToken == address(0)) {
             revert AlterfordErrors.InvalidToken();
@@ -256,25 +291,23 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite, ERC2771Context {
         (uint256 requiredBond, uint16 reasonFlags) = bondPolicy.previewBond(bondContext);
         challengeId = nextChallengeId++;
 
-        challenges[challengeId] = Challenge({
-            creator: creator,
-            executor: address(0),
-            settlementToken: settlementToken,
-            rulesHash: rulesHash,
-            metadataURI: metadataURI,
-            liveStreamURI: "",
-            rewardPool: rewardPool,
-            deadline: deadline,
-            state: AlterfordTypes.ChallengeState.Open,
-            evidenceHash: bytes32(0),
-            evidenceURI: "",
-            categoryId: categoryId,
-            mode: bondContext.mode,
-            riskLevel: bondContext.categoryRisk
-        });
+        Challenge storage challenge = challenges[challengeId];
+        challenge.creator = creator;
+        challenge.settlementToken = settlementToken;
+        challenge.rulesHash = rulesHash;
+        challenge.metadataURI = metadataURI;
+        challenge.rewardPool = rewardPool;
+        challenge.deadline = deadline;
+        challenge.state = AlterfordTypes.ChallengeState.Open;
+        challenge.categoryId = categoryId;
+        challenge.mode = bondContext.mode;
+        challenge.riskLevel = bondContext.categoryRisk;
         bondByChallenge[challengeId] = requiredBond;
-        if (!IERC20(settlementToken)
-                .transferFrom(creator, address(this), requiredBond + rewardPool)) {
+        fundingModelByChallenge[challengeId] = fundingModel;
+        bool rewardEscrowed = fundingModel == ChallengeFundingModel.Sponsored;
+        rewardEscrowedByChallenge[challengeId] = rewardEscrowed;
+        uint256 creationEscrow = requiredBond + (rewardEscrowed ? rewardPool : 0);
+        if (!IERC20(settlementToken).transferFrom(creator, address(this), creationEscrow)) {
             revert AlterfordErrors.TransferFailed();
         }
 
@@ -289,6 +322,19 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite, ERC2771Context {
             bondContext.mode,
             bondContext.categoryRisk
         );
+        emit ChallengeFundingModelSelected(
+            challengeId,
+            fundingModel,
+            fundingModel == ChallengeFundingModel.PerformerOffer ? creator : address(0),
+            fundingModel == ChallengeFundingModel.Sponsored ? creator : address(0)
+        );
+    }
+
+    function _fundingModelFor(bytes32 categoryId) private pure returns (ChallengeFundingModel) {
+        return categoryId == VANILLA_PERFORMER_OFFER_CATEGORY
+            || categoryId == UNDERWORLD_PERFORMER_OFFER_CATEGORY
+            ? ChallengeFundingModel.PerformerOffer
+            : ChallengeFundingModel.Sponsored;
     }
 
     function acceptChallenge(uint256 challengeId, string calldata liveStreamURI)
@@ -329,18 +375,31 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite, ERC2771Context {
         if (block.timestamp > challenge.deadline) revert AlterfordErrors.InvalidState();
         if (executor == challenge.creator) revert AlterfordErrors.InvalidState();
 
-        uint256 executorBond = bondByChallenge[challengeId];
+        ChallengeFundingModel fundingModel = fundingModelByChallenge[challengeId];
+        uint256 executorBond =
+            fundingModel == ChallengeFundingModel.Sponsored ? bondByChallenge[challengeId] : 0;
+        uint256 acceptanceEscrow = fundingModel == ChallengeFundingModel.PerformerOffer
+            ? challenge.rewardPool
+            : executorBond;
         challenge.executor = executor;
         challenge.liveStreamURI = liveStreamURI;
         challenge.state = AlterfordTypes.ChallengeState.Accepted;
         executorBondByChallenge[challengeId] = executorBond;
+        if (fundingModel == ChallengeFundingModel.PerformerOffer) {
+            rewardEscrowedByChallenge[challengeId] = true;
+        }
 
-        if (!IERC20(challenge.settlementToken).transferFrom(executor, address(this), executorBond))
-        {
+        if (!IERC20(challenge.settlementToken)
+                .transferFrom(executor, address(this), acceptanceEscrow)) {
             revert AlterfordErrors.TransferFailed();
         }
 
-        emit BondLocked("ChallengeExecutor", challengeId, executor, executorBond);
+        if (executorBond > 0) {
+            emit BondLocked("ChallengeExecutor", challengeId, executor, executorBond);
+        }
+        if (fundingModel == ChallengeFundingModel.PerformerOffer) {
+            emit ChallengeRewardFunded(challengeId, executor, challenge.rewardPool);
+        }
         emit ChallengeAccepted(challengeId, executor, executorBond);
         if (bytes(liveStreamURI).length != 0) {
             emit ChallengeLiveStreamUpdated(challengeId, executor, liveStreamURI);
@@ -376,7 +435,7 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite, ERC2771Context {
         if (challenge.state != AlterfordTypes.ChallengeState.Accepted) {
             revert AlterfordErrors.InvalidState();
         }
-        if (_actor() != challenge.executor) revert AlterfordErrors.Unauthorized();
+        if (_actor() != performerOf(challengeId)) revert AlterfordErrors.Unauthorized();
         if (evidenceHash == bytes32(0)) revert AlterfordErrors.InvalidMetadataHash();
         if (block.timestamp > challenge.deadline) revert AlterfordErrors.InvalidState();
 
@@ -559,6 +618,22 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite, ERC2771Context {
             : standardResolutionWindow;
     }
 
+    function sponsorOf(uint256 challengeId) public view returns (address) {
+        Challenge storage challenge = challenges[challengeId];
+        if (challenge.creator == address(0)) revert AlterfordErrors.InvalidState();
+        return fundingModelByChallenge[challengeId] == ChallengeFundingModel.PerformerOffer
+            ? challenge.executor
+            : challenge.creator;
+    }
+
+    function performerOf(uint256 challengeId) public view returns (address) {
+        Challenge storage challenge = challenges[challengeId];
+        if (challenge.creator == address(0)) revert AlterfordErrors.InvalidState();
+        return fundingModelByChallenge[challengeId] == ChallengeFundingModel.PerformerOffer
+            ? challenge.creator
+            : challenge.executor;
+    }
+
     function disputeBondFor(uint256 challengeId) public view returns (uint256) {
         Challenge storage challenge = challenges[challengeId];
         if (challenge.creator == address(0)) revert AlterfordErrors.InvalidState();
@@ -609,8 +684,12 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite, ERC2771Context {
         challenge.state = AlterfordTypes.ChallengeState.Cancelled;
         rewardFinalized[challengeId] = true;
 
-        if (!IERC20(challenge.settlementToken).transfer(challenge.creator, challenge.rewardPool)) {
-            revert AlterfordErrors.TransferFailed();
+        if (rewardEscrowedByChallenge[challengeId]) {
+            rewardEscrowedByChallenge[challengeId] = false;
+            if (!IERC20(challenge.settlementToken)
+                    .transfer(sponsorOf(challengeId), challenge.rewardPool)) {
+                revert AlterfordErrors.TransferFailed();
+            }
         }
         _finalizeCreatorBond(challengeId, challenge, false, reasonHash);
         _finalizeExecutorBond(challengeId, challenge, false, reasonHash);
@@ -661,9 +740,12 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite, ERC2771Context {
         challenge.state = AlterfordTypes.ChallengeState.Fraud;
         if (!rewardFinalized[challengeId]) {
             rewardFinalized[challengeId] = true;
-            if (!IERC20(challenge.settlementToken)
-                    .transfer(challenge.creator, challenge.rewardPool)) {
-                revert AlterfordErrors.TransferFailed();
+            if (rewardEscrowedByChallenge[challengeId]) {
+                rewardEscrowedByChallenge[challengeId] = false;
+                if (!IERC20(challenge.settlementToken)
+                        .transfer(sponsorOf(challengeId), challenge.rewardPool)) {
+                    revert AlterfordErrors.TransferFailed();
+                }
             }
         }
 
@@ -685,24 +767,26 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite, ERC2771Context {
         if (rewardFinalized[challengeId]) {
             revert AlterfordErrors.AlreadyClaimed();
         }
+        if (!rewardEscrowedByChallenge[challengeId]) revert AlterfordErrors.InvalidState();
 
         challenge.state = AlterfordTypes.ChallengeState.Resolved;
         rewardFinalized[challengeId] = true;
+        rewardEscrowedByChallenge[challengeId] = false;
 
         uint256 rewardPayout = 0;
         uint256 adminFee = 0;
         uint256 creatorFee = 0;
         if (executorSucceeded) {
-            (rewardPayout, adminFee, creatorFee) = _settleReward(challenge);
+            (rewardPayout, adminFee, creatorFee) = _settleReward(challengeId, challenge);
         } else if (!IERC20(challenge.settlementToken)
-                .transfer(challenge.creator, challenge.rewardPool)) {
+                .transfer(sponsorOf(challengeId), challenge.rewardPool)) {
             revert AlterfordErrors.TransferFailed();
         }
 
         _finalizeCreatorBond(challengeId, challenge, slashCreatorBond, reasonHash);
         _finalizeExecutorBond(challengeId, challenge, slashExecutorBond, reasonHash);
 
-        address winner = executorSucceeded ? challenge.executor : challenge.creator;
+        address winner = executorSucceeded ? performerOf(challengeId) : sponsorOf(challengeId);
         emit ChallengeResolved(
             challengeId, winner, executorSucceeded, rewardPayout, adminFee, creatorFee
         );
@@ -728,7 +812,7 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite, ERC2771Context {
             return;
         }
 
-        address beneficiary = executorSucceeded ? challenge.executor : challenge.creator;
+        address beneficiary = executorSucceeded ? performerOf(challengeId) : sponsorOf(challengeId);
         if (!IERC20(challenge.settlementToken).transfer(beneficiary, amount)) {
             revert AlterfordErrors.TransferFailed();
         }
@@ -754,7 +838,7 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite, ERC2771Context {
         return rewardPool >= HIGH_VALUE_THRESHOLD || risk >= AlterfordTypes.RiskLevel.High;
     }
 
-    function _settleReward(Challenge storage challenge)
+    function _settleReward(uint256 challengeId, Challenge storage challenge)
         private
         returns (uint256 rewardPayout, uint256 adminFee, uint256 creatorFee)
     {
@@ -771,7 +855,7 @@ contract ChallengeFactory is Governed, ReentrancyGuardLite, ERC2771Context {
         ) {
             revert AlterfordErrors.TransferFailed();
         }
-        if (!IERC20(challenge.settlementToken).transfer(challenge.executor, rewardPayout)) {
+        if (!IERC20(challenge.settlementToken).transfer(performerOf(challengeId), rewardPayout)) {
             revert AlterfordErrors.TransferFailed();
         }
     }

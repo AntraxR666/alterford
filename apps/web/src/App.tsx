@@ -36,6 +36,7 @@ import {
   calculateMarketSettlement,
   formatUsdt,
   type BountyDTO,
+  type ChallengeFundingModel,
   type ChallengeDTO,
   type MarketDTO,
   type XmrConversionAuthorization,
@@ -50,6 +51,7 @@ import {
 } from "./features/lifecycle";
 import { XmrConversionCard } from "./features/xmr/XmrConversionCard";
 import { challengeWorkflow, filterChallengesByMode } from "./features/challenges/challengeWorkflow";
+import { challengeAcceptanceCost, challengeCreationCost } from "./features/challenges/challengeFunding";
 import { bountyWorkflow, filterBountiesByMode } from "./features/bounties/bountyWorkflow";
 import {
   DEFAULT_EVIDENCE_UPLOAD_POLICY,
@@ -148,6 +150,7 @@ export function App() {
   const [selectedMarketId, setSelectedMarketId] = useState("1");
   const [challengeTitle, setChallengeTitle] = useState("Me tatuo el texto elegido por la comunidad");
   const [challengeStake, setChallengeStake] = useState("100");
+  const [challengeFundingModel, setChallengeFundingModel] = useState<ChallengeFundingModel>("Sponsored");
   const [challengeEvidence, setChallengeEvidence] = useState("Video continuo, timestamp y verificacion del resultado final");
   const [challengeLiveUrl, setChallengeLiveUrl] = useState("");
   const [challengeActionId, setChallengeActionId] = useState("");
@@ -222,6 +225,7 @@ export function App() {
     bountyRewardAmount,
     isUnderworldMode,
     approvalMode,
+    challengeFundingModel,
   );
   const bondEstimate = web3.bondEstimate;
   const challengeBondEstimate = web3.challengeBondEstimate;
@@ -257,7 +261,9 @@ export function App() {
   const bondAmountLabel = formatUsdt(bondEstimate.amount);
   const challengeBondAmountLabel = formatUsdt(challengeBondEstimate.amount);
   const challengeStakeLabel = formatUsdt(challengeStakeAmount);
-  const challengeTotalRequiredLabel = formatUsdt(challengeBondEstimate.amount + challengeStakeAmount);
+  const challengeTotalRequiredLabel = formatUsdt(
+    challengeCreationCost(challengeFundingModel, challengeBondEstimate.amount, challengeStakeAmount),
+  );
   const moderation = getChallengeModeration(challengeTitle, challengeEvidence);
   const preferredConnectorName = web3.preferredConnectorName || "wallet";
 
@@ -322,6 +328,11 @@ export function App() {
                 <WalletCards size={16} />
                 {web3.isConnecting ? "Conectando" : `Conectar ${preferredConnectorName}`}
               </button>
+              {web3.metaMaskAvailable && web3.hasWalletConnect && (
+                <button className="wallet-button" onClick={web3.connectWalletConnect} disabled={web3.isConnecting}>
+                  <WalletCards size={16} /> Otras wallets
+                </button>
+              )}
             </>
           )}
         </div>
@@ -400,6 +411,7 @@ export function App() {
           accountAddress={web3.account.address}
           isArbiter={web3.isChallengeArbiter}
           stake={challengeStake}
+          fundingModel={challengeFundingModel}
           stakeLabel={challengeStakeLabel}
           evidence={challengeEvidence}
           liveUrl={challengeLiveUrl}
@@ -408,6 +420,7 @@ export function App() {
           disputeReason={challengeDisputeReason}
           deadline={challengeDeadline}
           bondAmountLabel={challengeBondAmountLabel}
+          bondAmount={challengeBondEstimate.amount}
           totalRequiredLabel={challengeTotalRequiredLabel}
           bondReasons={challengeBondEstimate.reasons}
           moderation={moderation}
@@ -415,11 +428,12 @@ export function App() {
           executionMode={web3.challengeExecutionMode}
           needsApproval={web3.needsChallengeApproval}
           hasEnoughBalance={web3.hasEnoughChallengeBalance}
-          executorNeedsApproval={web3.needsChallengeExecutorApproval}
-          executorHasEnoughBalance={web3.hasEnoughChallengeExecutorBalance}
+          balance={web3.balance}
+          allowance={web3.challengeAllowance}
           tx={web3.tx}
           onTitle={setChallengeTitle}
           onStake={setChallengeStake}
+          onFundingModel={setChallengeFundingModel}
           onEvidence={setChallengeEvidence}
           onLiveUrl={setChallengeLiveUrl}
           onActionId={setChallengeActionId}
@@ -429,7 +443,7 @@ export function App() {
           onAddFunds={web3.mintTestTokens}
           onApprove={web3.approveChallengeSettlement}
           onExecutionMode={web3.selectChallengeExecutionMode}
-          onApproveExecutor={() => web3.approveChallengeExecutorBond()}
+          onApproveExecutor={(amount) => web3.approveChallengeExecutorBond(amount)}
           onApproveDispute={() => web3.approveChallengeDispute({ challengeId: challengeActionId })}
           onCreate={() =>
             web3.createChallenge({
@@ -439,9 +453,18 @@ export function App() {
               liveStreamURI: challengeLiveUrl,
               deadlineMinutes: challengeDeadline,
               riskLevel: challengeRiskLevel,
+              fundingModel: challengeFundingModel,
             })
           }
-          onAccept={() => web3.acceptChallenge({ challengeId: challengeActionId, liveStreamURI: challengeLiveUrl })}
+          onAccept={() => {
+            const challenge = indexer.challenges.find((item) => item.id === challengeActionId);
+            web3.acceptChallenge({
+              challengeId: challengeActionId,
+              liveStreamURI: challengeLiveUrl,
+              fundingModel: challenge?.fundingModel,
+              rewardPool: challenge ? toBigIntAmount(challenge.rewardPool) : undefined,
+            });
+          }}
           onUpdateLive={() => web3.updateChallengeLiveStream({ challengeId: challengeActionId, liveStreamURI: challengeLiveUrl })}
           onSubmitEvidence={() =>
             web3.submitChallengeEvidence({
@@ -872,6 +895,7 @@ function ChallengesView({
   accountAddress,
   isArbiter,
   stake,
+  fundingModel,
   stakeLabel,
   evidence,
   liveUrl,
@@ -880,6 +904,7 @@ function ChallengesView({
   disputeReason,
   deadline,
   bondAmountLabel,
+  bondAmount,
   totalRequiredLabel,
   bondReasons,
   moderation,
@@ -887,11 +912,12 @@ function ChallengesView({
   executionMode,
   needsApproval,
   hasEnoughBalance,
-  executorNeedsApproval,
-  executorHasEnoughBalance,
+  balance,
+  allowance,
   tx,
   onTitle,
   onStake,
+  onFundingModel,
   onEvidence,
   onLiveUrl,
   onActionId,
@@ -922,6 +948,7 @@ function ChallengesView({
   accountAddress?: string;
   isArbiter: boolean;
   stake: string;
+  fundingModel: ChallengeFundingModel;
   stakeLabel: string;
   evidence: string;
   liveUrl: string;
@@ -930,6 +957,7 @@ function ChallengesView({
   disputeReason: string;
   deadline: number;
   bondAmountLabel: string;
+  bondAmount: bigint;
   totalRequiredLabel: string;
   bondReasons: readonly string[];
   moderation: { allowed: boolean; level: string; message: string };
@@ -937,11 +965,12 @@ function ChallengesView({
   executionMode: ChallengeExecutionMode;
   needsApproval: boolean;
   hasEnoughBalance: boolean;
-  executorNeedsApproval: boolean;
-  executorHasEnoughBalance: boolean;
+  balance: bigint;
+  allowance: bigint;
   tx: { status: string; label: string; hash?: string; error?: string };
   onTitle: (value: string) => void;
   onStake: (value: string) => void;
+  onFundingModel: (value: ChallengeFundingModel) => void;
   onEvidence: (value: string) => void;
   onLiveUrl: (value: string) => void;
   onActionId: (value: string) => void;
@@ -951,7 +980,7 @@ function ChallengesView({
   onAddFunds: () => void;
   onApprove: () => void;
   onExecutionMode: (mode: ChallengeExecutionMode) => void;
-  onApproveExecutor: () => void;
+  onApproveExecutor: (amount: bigint) => void;
   onApproveDispute: () => void;
   onCreate: () => void;
   onAccept: () => void;
@@ -988,10 +1017,20 @@ function ChallengesView({
   const isCreator = Boolean(
     selectedChallenge && normalizedAccount && selectedChallenge.creator.toLowerCase() === normalizedAccount,
   );
-  const isExecutor = Boolean(
-    selectedChallenge?.executor && normalizedAccount && selectedChallenge.executor.toLowerCase() === normalizedAccount,
+  const selectedIsPerformerOffer = selectedChallenge?.fundingModel === "PerformerOffer";
+  const performerAddress = selectedIsPerformerOffer
+    ? selectedChallenge?.performer ?? selectedChallenge?.creator
+    : selectedChallenge?.performer ?? selectedChallenge?.executor;
+  const sponsorAddress = selectedIsPerformerOffer
+    ? selectedChallenge?.sponsor ?? selectedChallenge?.executor
+    : selectedChallenge?.sponsor ?? selectedChallenge?.creator;
+  const isPerformer = Boolean(
+    performerAddress && normalizedAccount && performerAddress.toLowerCase() === normalizedAccount,
   );
-  const isParticipant = isCreator || isExecutor;
+  const isSponsor = Boolean(
+    sponsorAddress && normalizedAccount && sponsorAddress.toLowerCase() === normalizedAccount,
+  );
+  const isParticipant = isPerformer || isSponsor;
   const rawDeadline = Number(selectedChallenge?.deadline);
   const beforeDeadline = !Number.isFinite(rawDeadline) || nowSeconds <= rawDeadline;
   const canAccept = Boolean(
@@ -1001,7 +1040,7 @@ function ChallengesView({
     selectedChallenge && beforeDeadline && isParticipant && ["Accepted", "EvidenceSubmitted"].includes(selectedChallenge.state),
   );
   const canSubmitEvidence = Boolean(
-    selectedChallenge && beforeDeadline && isExecutor && selectedChallenge.state === "Accepted",
+    selectedChallenge && beforeDeadline && isPerformer && selectedChallenge.state === "Accepted",
   );
   const canPropose = Boolean(
     selectedChallenge && isParticipant && selectedChallenge.state === "EvidenceSubmitted",
@@ -1030,6 +1069,16 @@ function ChallengesView({
   );
   const maxDeadlineMinutes = Number(stake) >= 1000 ? 2_880 : 1_440;
   const challengeEndLabel = new Date((nowSeconds + deadline * 60) * 1_000).toLocaleString("es-BO");
+  const selectedAcceptanceCost = selectedChallenge
+    ? challengeAcceptanceCost(
+        selectedChallenge.fundingModel ?? "Sponsored",
+        bondAmount,
+        toBigIntAmount(selectedChallenge.rewardPool),
+      )
+    : bondAmount;
+  const selectedAcceptanceCostLabel = formatUsdt(selectedAcceptanceCost);
+  const acceptanceNeedsApproval = allowance < selectedAcceptanceCost;
+  const acceptanceHasEnoughBalance = balance >= selectedAcceptanceCost;
   const workflow = selectedChallenge
     ? challengeWorkflow(selectedChallenge, accountAddress as Address | undefined, isArbiter, nowSeconds)
     : undefined;
@@ -1042,7 +1091,7 @@ function ChallengesView({
         items={[
           { id: "explore", label: "Explorar retos", description: "Retos disponibles" },
           { id: "mine", label: "Mis retos", description: "Tu actividad" },
-          { id: "create", label: "Crear reto", description: "Publicar recompensa" },
+          { id: "create", label: "Crear reto", description: "Financiar u ofrecer" },
         ]}
         onChange={(value) => setWorkflowView(value as typeof workflowView)}
       />
@@ -1096,11 +1145,31 @@ function ChallengesView({
         {workflowView === "create" && <>
         <p className="eyebrow">Crear reto protegido</p>
         <h2>Define el reto antes de bloquear fondos.</h2>
+        <div className="execution-mode" aria-label="Quien financia la recompensa">
+          <button
+            className={fundingModel === "Sponsored" ? "selected" : ""}
+            aria-pressed={fundingModel === "Sponsored"}
+            onClick={() => onFundingModel("Sponsored")}
+          >
+            <Trophy size={16} /> Yo financio el reto
+          </button>
+          <button
+            className={fundingModel === "PerformerOffer" ? "selected" : ""}
+            aria-pressed={fundingModel === "PerformerOffer"}
+            onClick={() => onFundingModel("PerformerOffer")}
+          >
+            <UserRound size={16} /> Yo cumplire el reto
+          </button>
+        </div>
         <div className="role-notice">
           <UserRound size={18} />
           <div>
-            <strong>La wallet conectada sera el creador</strong>
-            <span>Otra wallet debe aceptar el reto y bloquear exclusivamente su bond de ejecutor.</span>
+            <strong>{fundingModel === "PerformerOffer" ? "Tu wallet sera el oferente" : "Tu wallet sera el patrocinador"}</strong>
+            <span>
+              {fundingModel === "PerformerOffer"
+                ? "Ahora bloqueas solo tu bond. La primera persona que acepte depositara la recompensa solicitada."
+                : "Ahora depositas recompensa + bond. Otra wallet acepta y bloquea su bond de ejecutor."}
+            </span>
           </div>
         </div>
         <div className="execution-mode" aria-label="Modo de envio de operaciones">
@@ -1177,14 +1246,27 @@ function ChallengesView({
           <div className="builder-stage"><strong>2. Revisa el dinero protegido</strong><span>Este es el importe exacto que se bloqueara en el contrato.</span></div>
           <StepLine done={hasEnoughBalance} label={`Total a bloquear al crear: ${totalRequiredLabel} aUSDT`} action="Recibir aUSDT testnet" onAction={onAddFunds} />
           <div className="builder-stage"><strong>3. Prepara el permiso</strong><span>Autorizar no mueve aUSDT. Con el modo recomendado, el permiso restante sirve para proximos retos.</span></div>
-          <StepLine done={!needsApproval} label="Permiso disponible para recompensa + bond" action="Autorizar una vez" onAction={onApprove} />
+          <StepLine
+            done={!needsApproval}
+            label={fundingModel === "PerformerOffer" ? "Permiso disponible solo para tu bond" : "Permiso disponible para recompensa + bond"}
+            action="Autorizar una vez"
+            onAction={onApprove}
+          />
           <div className="step-line pending">
             <LockKeyhole size={17} />
-            <span>Recompensa escrowed: {stakeLabel} aUSDT. Bond creador: {bondAmountLabel} aUSDT.</span>
+            <span>
+              {fundingModel === "PerformerOffer"
+                ? `Bond del oferente: ${bondAmountLabel} aUSDT. La recompensa de ${stakeLabel} aUSDT la deposita quien acepte.`
+                : `Recompensa escrowed: ${stakeLabel} aUSDT. Bond patrocinador: ${bondAmountLabel} aUSDT.`}
+            </span>
           </div>
           <div className="step-line pending">
             <Eye size={17} />
-            <span>El ejecutor acepta desde otra wallet, bloquea su bond y puede publicar live.</span>
+            <span>
+              {fundingModel === "PerformerOffer"
+                ? "El patrocinador acepta desde otra wallet y la recompensa queda protegida en escrow."
+                : "El ejecutor acepta desde otra wallet, bloquea su bond y puede publicar live."}
+            </span>
           </div>
           <div className="step-line pending">
             <FileCheck size={17} />
@@ -1205,7 +1287,11 @@ function ChallengesView({
         >
           4. Crear reto {executionMode === "gasless" ? "sin gas" : "con Wallet"} <ChevronRight size={16} />
         </button>
-        <p className="help-text">Este ultimo paso si bloquea {totalRequiredLabel} aUSDT en escrow. No existe otro cobro oculto.</p>
+        <p className="help-text">
+          Este ultimo paso bloquea {totalRequiredLabel} aUSDT en escrow
+          {fundingModel === "PerformerOffer" ? " como garantia del oferente" : " como recompensa + garantia"}.
+          No existe otro cobro oculto.
+        </p>
         </>}
 
         {workflowView !== "create" && <div className="challenge-actions guided-detail">
@@ -1217,12 +1303,12 @@ function ChallengesView({
           </div>
           <p className="help-text">
             {selectedChallenge
-              ? challengeActionGuidance(selectedChallenge, { isCreator, isExecutor, isArbiter }, nowSeconds)
+              ? challengeActionGuidance(selectedChallenge, { isPerformer, isSponsor, isArbiter }, nowSeconds)
               : "Elige una tarjeta de Activos, En resolucion o Historial. Solo apareceran las acciones validas para tu cuenta."}
           </p>
           {selectedChallenge && <div className="selected-entity-summary">
             <strong>{selectedChallenge.title || `Reto #${selectedChallenge.id}`}</strong>
-            <span>Estado on-chain: {selectedChallenge.state}. Tu rol: {isArbiter ? "arbitro" : isCreator ? "creador" : isExecutor ? "ejecutor" : "observador"}.</span>
+            <span>Estado on-chain: {selectedChallenge.state}. Tu rol: {isArbiter ? "arbitro" : isPerformer ? "ejecutor" : isSponsor ? "patrocinador" : "observador"}.</span>
           </div>}
           {workflow && <>
             <LifecycleProgress steps={workflow.steps} />
@@ -1244,11 +1330,15 @@ function ChallengesView({
           </div>}
           {canAccept && <div className="guided-transaction">
             <strong>Aceptar este reto</strong>
-            <span>El ejecutor bloquea {bondAmountLabel} aUSDT como garantia; no paga la recompensa.</span>
-            {!executorHasEnoughBalance && <button onClick={onAddFunds}>Recibir aUSDT testnet</button>}
-            {executorNeedsApproval
-              ? <button onClick={onApproveExecutor}>1. Autorizar una vez el bond de {bondAmountLabel} aUSDT</button>
-              : <button className="primary-action" onClick={onAccept}>2. Aceptar y bloquear bond</button>}
+            <span>
+              {selectedIsPerformerOffer
+                ? `Financias ${selectedAcceptanceCostLabel} aUSDT de recompensa. Si el oferente no cumple, el contrato te los devuelve.`
+                : `Como ejecutor bloqueas ${selectedAcceptanceCostLabel} aUSDT de garantia; no pagas la recompensa.`}
+            </span>
+            {!acceptanceHasEnoughBalance && <button onClick={onAddFunds}>Recibir aUSDT testnet</button>}
+            {acceptanceNeedsApproval
+              ? <button onClick={() => onApproveExecutor(selectedAcceptanceCost)}>1. Autorizar {selectedAcceptanceCostLabel} aUSDT</button>
+              : <button className="primary-action" onClick={onAccept}>2. Aceptar y bloquear {selectedIsPerformerOffer ? "recompensa" : "bond"}</button>}
           </div>}
           {canUpdateLive && <div className="action-grid guided-actions">
             <button onClick={onUpdateLive} disabled={!liveUrl.trim()}>Publicar o actualizar live</button>
@@ -1391,6 +1481,7 @@ function ChallengeSection({
               <p>{challenge.description || challenge.metadataURI || "Reto creado por usuario con escrow on-chain."}</p>
               <div className="challenge-meta">
                 <span>{formatUsdt(toBigIntAmount(challenge.rewardPool))} aUSDT</span>
+                <span>{challenge.fundingModel === "PerformerOffer" ? "Oferta del ejecutor" : "Reto patrocinado"}</span>
                 <span>ID #{challenge.id}</span>
               </div>
               {countdown && (
@@ -1400,6 +1491,8 @@ function ChallengeSection({
               )}
               {challenge.liveStreamURI ? (
                 <a className="live-link" href={challenge.liveStreamURI} target="_blank" rel="noreferrer">Ver live proof</a>
+              ) : challenge.fundingModel === "PerformerOffer" && !challenge.rewardEscrowed ? (
+                <small>Esperando patrocinador: la recompensa aun no ha sido depositada.</small>
               ) : (
                 <small>{availability.group === "active" ? "Live pendiente. El ejecutor puede publicarlo al aceptar." : "Sin live publicado."}</small>
               )}
@@ -1416,7 +1509,7 @@ function ChallengeSection({
 
 function challengeActionGuidance(
   challenge: ChallengeDTO,
-  roles: { isCreator: boolean; isExecutor: boolean; isArbiter: boolean },
+  roles: { isPerformer: boolean; isSponsor: boolean; isArbiter: boolean },
   nowSeconds: number,
 ): string {
   const availability = challengeAvailability(challenge, nowSeconds);
@@ -1426,8 +1519,13 @@ function challengeActionGuidance(
       : "Este reto termino y se conserva solo como historial verificable.";
   }
   if (challenge.state === "Open") {
-    return roles.isCreator
-      ? "Eres el creador. Otra wallet debe aceptar y bloquear el bond de ejecutor."
+    if (challenge.fundingModel === "PerformerOffer") {
+      return roles.isPerformer
+        ? "Publicaste una oferta. Espera a que otra wallet deposite la recompensa solicitada."
+        : "Para patrocinar: autoriza la recompensa exacta y acepta. El dinero queda en escrow hasta la resolucion.";
+    }
+    return roles.isSponsor
+      ? "Patrocinaste el reto. Otra wallet debe aceptar y bloquear el bond de ejecutor."
       : "Para participar: autoriza el bond y luego acepta el reto. Autorizar no mueve fondos; aceptar si los bloquea.";
   }
   if (challenge.state === "Accepted") {
@@ -1437,7 +1535,7 @@ function challengeActionGuidance(
         ? "El plazo de evidencia termino. Revisa lo disponible y resuelve como arbitro."
         : "El plazo de evidencia termino. Espera la resolucion del arbitro; no necesitas enviar otra transaccion.";
     }
-    return roles.isExecutor
+    return roles.isPerformer
       ? "Publica el live si corresponde y envia la evidencia final al terminar."
       : "El ejecutor debe publicar la evidencia; puedes seguir el live mientras tanto.";
   }

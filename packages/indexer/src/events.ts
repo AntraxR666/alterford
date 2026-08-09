@@ -2,6 +2,7 @@ import type {
   Address,
   BountyState,
   Category,
+  ChallengeFundingModel,
   ChallengeState,
   MarketState,
   ModeAffinity,
@@ -208,6 +209,23 @@ export type AlterfordEvent =
         challengeId: string;
         executor: Address;
         executorBond: bigint;
+      }
+    >
+  | EventEnvelope<
+      "ChallengeFundingModelSelected",
+      {
+        challengeId: string;
+        fundingModel: ChallengeFundingModel;
+        performer: Address;
+        sponsor: Address;
+      }
+    >
+  | EventEnvelope<
+      "ChallengeRewardFunded",
+      {
+        challengeId: string;
+        sponsor: Address;
+        rewardPool: bigint;
       }
     >
   | EventEnvelope<

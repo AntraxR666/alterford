@@ -137,4 +137,23 @@ describe("phase 1 resilience ABIs", () => {
       type: "uint8",
     });
   });
+
+  it("exposes performer-funded challenge creation and escrow state", () => {
+    const abi = (sdk as any).challengeFactoryAbi as readonly any[];
+
+    expect(item(abi, "function", "createPerformerOffer")).toBeUndefined();
+    expect(item(abi, "function", "createChallenge")?.inputs.at(-1)).toMatchObject({
+      name: "categoryId",
+      type: "bytes32",
+    });
+    expect(item(abi, "function", "fundingModelByChallenge")?.outputs[0].type).toBe("uint8");
+    expect(item(abi, "function", "rewardEscrowedByChallenge")?.outputs[0].type).toBe("bool");
+    expect(item(abi, "function", "sponsorOf")?.outputs[0].type).toBe("address");
+    expect(item(abi, "function", "performerOf")?.outputs[0].type).toBe("address");
+    expect(item(abi, "event", "ChallengeRewardFunded")?.inputs.map((input: any) => input.name)).toEqual([
+      "challengeId",
+      "sponsor",
+      "rewardPool",
+    ]);
+  });
 });

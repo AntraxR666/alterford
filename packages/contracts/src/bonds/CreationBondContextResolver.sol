@@ -25,6 +25,9 @@ contract CreationBondContextResolver is Governed {
     bytes32 public constant CATEGORY_UNDERWORLD_BOUNTY = keccak256("UNDERWORLD_BOUNTY");
     bytes32 public constant CATEGORY_VANILLA_CHALLENGE = keccak256("VANILLA_CHALLENGE");
     bytes32 public constant CATEGORY_UNDERWORLD_CHALLENGE = keccak256("UNDERWORLD_CHALLENGE");
+    bytes32 public constant CATEGORY_VANILLA_PERFORMER_OFFER = keccak256("VANILLA_PERFORMER_OFFER");
+    bytes32 public constant CATEGORY_UNDERWORLD_PERFORMER_OFFER =
+        keccak256("UNDERWORLD_PERFORMER_OFFER");
 
     struct CategoryRule {
         uint8 entityMask;
@@ -153,6 +156,20 @@ contract CreationBondContextResolver is Governed {
         );
         _setCategory(
             CATEGORY_UNDERWORLD_CHALLENGE,
+            CHALLENGE_MASK,
+            AlterfordTypes.Mode.Underworld,
+            AlterfordTypes.RiskLevel.High,
+            true
+        );
+        _setCategory(
+            CATEGORY_VANILLA_PERFORMER_OFFER,
+            CHALLENGE_MASK,
+            AlterfordTypes.Mode.Vanilla,
+            AlterfordTypes.RiskLevel.Medium,
+            true
+        );
+        _setCategory(
+            CATEGORY_UNDERWORLD_PERFORMER_OFFER,
             CHALLENGE_MASK,
             AlterfordTypes.Mode.Underworld,
             AlterfordTypes.RiskLevel.High,

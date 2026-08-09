@@ -58,6 +58,31 @@ describe("challenge workflow model", () => {
     expect(challengeWorkflow(disputed, observer, true, 2_000).primaryAction).toBe("resolve-dispute");
     expect(challengeWorkflow(disputed, creator, false, 2_000).primaryAction).toBeNull();
   });
+
+  it("guides performer offers through sponsor funding and performer evidence", () => {
+    const openOffer = challenge({
+      fundingModel: "PerformerOffer",
+      performer: creator,
+      sponsor: undefined,
+      rewardEscrowed: false,
+    });
+    expect(challengeWorkflow(openOffer, creator, false, 1_000)).toMatchObject({
+      role: "performer",
+      primaryAction: null,
+    });
+    expect(challengeWorkflow(openOffer, observer, false, 1_000).instruction).toMatch(/financia.*recompensa/i);
+
+    const acceptedOffer = challenge({
+      state: "Accepted",
+      fundingModel: "PerformerOffer",
+      performer: creator,
+      sponsor: executor,
+      executor,
+      rewardEscrowed: true,
+    });
+    expect(challengeWorkflow(acceptedOffer, creator, false, 1_000).primaryAction).toBe("submit-evidence");
+    expect(challengeWorkflow(acceptedOffer, executor, false, 1_000).primaryAction).toBeNull();
+  });
 });
 
 function challenge(overrides: Partial<ChallengeDTO>): ChallengeDTO {

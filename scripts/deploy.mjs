@@ -3,7 +3,11 @@ import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createPublicClient, createWalletClient, http, zeroAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { deploymentRpcUrl } from "./deploy-config.mjs";
+import {
+  contractsMissingFromReuse,
+  deploymentRpcUrl,
+  indexFoundryContractCreations,
+} from "./deploy-config.mjs";
 
 const args = new Set(process.argv.slice(2));
 const chainName = args.has("--chain") ? process.argv[process.argv.indexOf("--chain") + 1] : "local";
@@ -307,22 +311,9 @@ async function readFoundryBroadcast(chainId, client, reusedContracts = {}) {
       "utf8",
     ),
   );
-  const byName = new Map();
-  for (const tx of broadcast.transactions ?? []) {
-    if (tx.contractName && tx.contractAddress) byName.set(tx.contractName, tx);
-  }
-  const required = [
-    ["settlementToken", "MockSettlementToken"],
-    ["creationBondPolicy", "CreationBondPolicy"],
-    ["bondContextResolver", "CreationBondContextResolver"],
-    ["alterfordForwarder", "AlterfordForwarder"],
-    ["marketFactory", "MarketFactory"],
-    ["bountyFactory", "BountyFactory"],
-    ["challengeFactory", "ChallengeFactory"],
-    ["bountyRecoveryVault", "BountyRecoveryVault"],
-  ];
+  const byName = indexFoundryContractCreations(broadcast.transactions);
   const deployed = Object.fromEntries(
-    await Promise.all(required.slice(2).map(async ([key, contractName]) => {
+    await Promise.all(contractsMissingFromReuse(reusedContracts).map(async ([key, contractName]) => {
       const tx = byName.get(contractName);
       if (!tx) throw new Error(`Missing ${contractName} in Foundry broadcast output.`);
       const txHash = tx.hash ?? tx.transactionHash;

@@ -10,7 +10,14 @@ export type ChallengeWorkflowAction =
   | "resolve-early"
   | "cancel-expired";
 
-export type ChallengeWorkflowRole = "creator" | "executor" | "participant" | "arbiter" | "observer";
+export type ChallengeWorkflowRole =
+  | "creator"
+  | "executor"
+  | "sponsor"
+  | "performer"
+  | "participant"
+  | "arbiter"
+  | "observer";
 
 export interface WorkflowStep {
   label: string;
@@ -42,12 +49,28 @@ export function challengeWorkflow(
   nowSeconds: number,
 ): ChallengeWorkflowModel {
   const normalized = account?.toLowerCase();
+  const isPerformerOffer = challenge.fundingModel === "PerformerOffer";
   const isCreator = Boolean(normalized && challenge.creator.toLowerCase() === normalized);
   const isExecutor = Boolean(normalized && challenge.executor?.toLowerCase() === normalized);
-  const role: ChallengeWorkflowRole = isCreator
-    ? "creator"
-    : isExecutor
-      ? "executor"
+  const performerAddress = isPerformerOffer ? challenge.performer ?? challenge.creator : challenge.executor;
+  const sponsorAddress = isPerformerOffer ? challenge.sponsor ?? challenge.executor : challenge.creator;
+  const isPerformer = Boolean(normalized && performerAddress?.toLowerCase() === normalized);
+  const isSponsor = Boolean(normalized && sponsorAddress?.toLowerCase() === normalized);
+  const isParticipant = isPerformer || isSponsor;
+  const role: ChallengeWorkflowRole = isPerformerOffer
+    ? isPerformer
+      ? "performer"
+      : isSponsor
+        ? "sponsor"
+        : isArbiter
+          ? "arbiter"
+          : normalized
+            ? "participant"
+            : "observer"
+    : isCreator
+      ? "creator"
+      : isExecutor
+        ? "executor"
       : isArbiter
         ? "arbiter"
         : normalized
@@ -71,12 +94,17 @@ export function challengeWorkflow(
         ? "Cancela el reto para devolver la recompensa y el bond del creador."
         : "No se puede aceptar. El arbitro debe cerrar el escrow.";
       primaryAction = isArbiter ? "cancel-expired" : null;
-    } else if (isCreator) {
+    } else if (isPerformerOffer && isPerformer) {
+      headline = "Esperando un patrocinador";
+      instruction = "Tu bond ya esta protegido. Comparte la oferta; quien acepte financiara la recompensa solicitada.";
+    } else if (!isPerformerOffer && isCreator) {
       headline = "Esperando un ejecutor";
       instruction = "Tu recompensa ya esta protegida. Comparte el reto; otra wallet debe aceptarlo.";
     } else {
-      headline = "Puedes tomar este reto";
-      instruction = "Primero autoriza el bond exacto y despues acepta. Autorizar no mueve fondos; aceptar si los bloquea.";
+      headline = isPerformerOffer ? "Puedes patrocinar esta oferta" : "Puedes tomar este reto";
+      instruction = isPerformerOffer
+        ? "Al aceptar financias la recompensa exacta. Queda en escrow y vuelve a ti si el oferente no cumple."
+        : "Primero autoriza el bond exacto y despues acepta. Autorizar no mueve fondos; aceptar si los bloquea.";
       primaryAction = "accept";
     }
   } else if (challenge.state === "Accepted") {
@@ -86,7 +114,7 @@ export function challengeWorkflow(
         ? "El plazo de evidencia termino. Revisa lo disponible y publica la decision."
         : "El plazo termino. No envies otra transaccion; el arbitro revisara el resultado.";
       primaryAction = isArbiter ? "resolve-early" : null;
-    } else if (isExecutor) {
+    } else if (isPerformer) {
       headline = "Realiza el reto y entrega la prueba";
       instruction = "Puedes publicar el live durante el reto. Al terminar, sube la evidencia final antes del contador.";
       primaryAction = "submit-evidence";
@@ -97,10 +125,10 @@ export function challengeWorkflow(
     }
   } else if (challenge.state === "EvidenceSubmitted") {
     headline = "La evidencia esta lista para decidir";
-    instruction = isCreator || isExecutor
+    instruction = isParticipant
       ? "Revisa la prueba y propone si el reto se cumplio o no se cumplio."
       : "El creador o ejecutor debe proponer el resultado.";
-    primaryAction = isCreator || isExecutor ? "propose-result" : isArbiter ? "resolve-early" : null;
+    primaryAction = isParticipant ? "propose-result" : isArbiter ? "resolve-early" : null;
   } else if (challenge.state === "Review") {
     if (proposalExpired) {
       headline = "La ventana termino sin disputa";
@@ -108,7 +136,7 @@ export function challengeWorkflow(
       primaryAction = "finalize";
     } else {
       const isOtherParticipant = Boolean(
-        (isCreator || isExecutor)
+        isParticipant
           && proposal?.proposer.toLowerCase() !== normalized,
       );
       headline = isOtherParticipant ? "Confirma o disputa el resultado" : "Esperando a la otra parte";

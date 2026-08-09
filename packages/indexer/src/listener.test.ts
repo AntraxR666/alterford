@@ -325,6 +325,26 @@ describe("real Alterford log decoder", () => {
       },
       {
         abi: challengeFactoryAbi,
+        name: "ChallengeFundingModelSelected",
+        address: challengeFactory,
+        args: { challengeId: 9n, fundingModel: 1, performer: creator, sponsor: "0x0000000000000000000000000000000000000000" },
+        expected: {
+          type: "ChallengeFundingModelSelected",
+          payload: { challengeId: "9", fundingModel: "PerformerOffer", performer: creator },
+        },
+      },
+      {
+        abi: challengeFactoryAbi,
+        name: "ChallengeRewardFunded",
+        address: challengeFactory,
+        args: { challengeId: 9n, sponsor: actor, rewardPool: 100_000_000n },
+        expected: {
+          type: "ChallengeRewardFunded",
+          payload: { challengeId: "9", sponsor: actor, rewardPool: 100_000_000n },
+        },
+      },
+      {
+        abi: challengeFactoryAbi,
         name: "ChallengeResolutionProposed",
         address: challengeFactory,
         args: {

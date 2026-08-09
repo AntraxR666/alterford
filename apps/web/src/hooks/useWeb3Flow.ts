@@ -13,6 +13,7 @@ import {
   marketFactoryAbi,
   marketBondCategoryId,
   type ContractAddresses,
+  type ChallengeFundingModel,
   type CreationBondEstimate,
   type TxLifecycle,
   type XmrConversionAuthorization,
@@ -41,12 +42,23 @@ import {
   readableTransactionError,
   type WalletKind,
 } from "../web3/transactionErrors";
+import {
+  connectionWithTimeout,
+  hasMetaMaskProvider,
+  selectMetaMaskConnector,
+  selectWalletConnectConnector,
+} from "../web3/walletConnection";
 import type { ApprovalMode } from "../stores/appStore";
 import {
   AlterfordGatewayClient,
   isRelayConfigCompatible,
   waitForRelay,
 } from "../web3/gatewayClient";
+import {
+  challengeAcceptanceCost,
+  challengeCreationCost,
+  challengeCreationFunction,
+} from "../features/challenges/challengeFunding";
 
 interface TxState {
   status: TxLifecycle;
@@ -75,6 +87,7 @@ export interface CreateChallengeInput {
   liveStreamURI?: string;
   deadlineMinutes: number;
   riskLevel: "Low" | "Medium" | "High" | "Critical";
+  fundingModel: ChallengeFundingModel;
 }
 
 export interface ChallengeActionInput {
@@ -82,6 +95,8 @@ export interface ChallengeActionInput {
   liveStreamURI?: string;
   evidenceURI?: string;
   reason?: string;
+  fundingModel?: ChallengeFundingModel;
+  rewardPool?: bigint;
 }
 
 export interface CreateBountyInput {
@@ -142,16 +157,18 @@ export function useWeb3Flow(
   bountyRewardPool: bigint = 0n,
   isBountyUnderworld = false,
   approvalMode: ApprovalMode = "smart",
+  challengeFundingModel: ChallengeFundingModel = "Sponsored",
 ) {
   const account = useAccount();
   const chainId = useChainId();
   const publicClient = usePublicClient({ chainId: configuredChainId() });
-  const { connectors, connectAsync, isPending: isConnecting } = useConnect();
+  const { connectors, connectAsync, isPending: wagmiIsConnecting, reset: resetConnect } = useConnect();
   const { disconnect } = useDisconnect();
   const { switchChainAsync, isPending: isSwitching } = useSwitchChain();
   const { writeContractAsync } = useWriteContract();
   const { signTypedDataAsync } = useSignTypedData();
   const [tx, setTx] = useState<TxState>({ status: "idle", label: "Ready" });
+  const [connectionPending, setConnectionPending] = useState(false);
   const [challengeExecutionMode, setChallengeExecutionMode] = useState<ChallengeExecutionMode>("wallet");
   const [gaslessChallengesAvailable, setGaslessChallengesAvailable] = useState(false);
   const [marketId, setMarketId] = useState("1");
@@ -173,8 +190,8 @@ export function useWeb3Flow(
     [isUnderworldMode, marketCategory],
   );
   const challengeCategoryId = useMemo(
-    () => challengeBondCategoryId(isUnderworldMode),
-    [isUnderworldMode],
+    () => challengeBondCategoryId(isUnderworldMode, challengeFundingModel),
+    [challengeFundingModel, isUnderworldMode],
   );
   const bountyCategoryId = useMemo(() => bountyBondCategoryId(isBountyUnderworld), [isBountyUnderworld]);
 
@@ -245,7 +262,11 @@ export function useWeb3Flow(
   );
   const resolvedBountyBondEstimate = mergeOnchainBondEstimate(bountyBondEstimate, bountyBondPreview.data);
   const requiredApproval = resolvedBondEstimate.amount + quickBetAmount;
-  const challengeRequiredApproval = resolvedChallengeBondEstimate.amount + challengeRewardPool;
+  const challengeRequiredApproval = challengeCreationCost(
+    challengeFundingModel,
+    resolvedChallengeBondEstimate.amount,
+    challengeRewardPool,
+  );
   const createMarketCost = resolvedBondEstimate.amount;
   const betCost = quickBetAmount;
   const challengeCreateCost = challengeRequiredApproval;
@@ -405,8 +426,19 @@ export function useWeb3Flow(
     placeBet: quickBetAmount,
     totalSetup: requiredApproval,
   };
-  const hasInjectedProvider = Boolean((globalThis as typeof globalThis & { ethereum?: EthereumProvider }).ethereum);
-  const preferredConnectorName = hasInjectedProvider ? "wallet" : "WalletConnect";
+  const injectedProvider = (globalThis as typeof globalThis & {
+    ethereum?: EthereumProvider & {
+      isMetaMask?: boolean;
+      isRabby?: boolean;
+      isBinance?: boolean;
+      isBinanceChain?: boolean;
+      isBraveWallet?: boolean;
+      providers?: Array<EthereumProvider & { isMetaMask?: boolean }>;
+    };
+  }).ethereum;
+  const metaMaskAvailable = hasMetaMaskProvider(injectedProvider);
+  const walletConnectConnector = selectWalletConnectConnector(connectors);
+  const preferredConnectorName = metaMaskAvailable ? "MetaMask" : "WalletConnect";
   const socialConnector = connectors.find((item) => item.id === "web3auth");
   const hasSocialLogin = Boolean(socialConnector);
 
@@ -452,19 +484,60 @@ export function useWeb3Flow(
   ]);
 
   async function connectWallet() {
-    const connector = hasInjectedProvider
-      ? connectors.find((item) => item.id.toLowerCase().includes("injected")) ?? connectors[0]
-      : connectors.find((item) => item.id.toLowerCase().includes("walletconnect"))
-        ?? connectors.find((item) => item.name.toLowerCase().includes("walletconnect"))
-        ?? connectors[0];
-    await connectAsync({ connector });
+    const connector = metaMaskAvailable
+      ? selectMetaMaskConnector(connectors)
+      : walletConnectConnector;
+    await connectUsing(connector, preferredConnectorName);
+  }
+
+  async function connectWalletConnect() {
+    await connectUsing(walletConnectConnector, "WalletConnect");
+  }
+
+  async function connectUsing(connector: (typeof connectors)[number] | undefined, label: string) {
+    if (!connector) {
+      setTx({ status: "failed", label: `Conectar ${label}`, error: `${label} no esta disponible en este navegador.` });
+      return;
+    }
+    setConnectionPending(true);
+    setTx({ status: "pending", label: `Conectando ${label}` });
+    try {
+      await connectionWithTimeout(connectAsync({ connector }), 45_000);
+      setTx({ status: "confirmed", label: `${label} conectado` });
+    } catch (error) {
+      resetConnect();
+      setTx({
+        status: "failed",
+        label: `Conectar ${label}`,
+        error: error instanceof Error ? error.message.split("\n")[0] : `No se pudo conectar ${label}.`,
+      });
+    } finally {
+      setConnectionPending(false);
+    }
   }
 
   async function connectSocialWallet() {
     if (!socialConnector) {
       throw new Error("El acceso por email no esta configurado en este entorno.");
     }
-    await connectAsync({ connector: socialConnector, chainId: desiredChainId });
+    setConnectionPending(true);
+    setTx({ status: "pending", label: "Abriendo acceso por email" });
+    try {
+      await connectionWithTimeout(
+        connectAsync({ connector: socialConnector, chainId: desiredChainId }),
+        120_000,
+      );
+      setTx({ status: "confirmed", label: "Wallet con email conectada" });
+    } catch (error) {
+      resetConnect();
+      setTx({
+        status: "failed",
+        label: "Entrar con email",
+        error: error instanceof Error ? error.message.split("\n")[0] : "No se pudo abrir la wallet con email.",
+      });
+    } finally {
+      setConnectionPending(false);
+    }
   }
 
   async function switchToTargetChain(): Promise<boolean> {
@@ -727,15 +800,15 @@ export function useWeb3Flow(
       });
     });
 
-  const approveChallengeExecutorBond = () =>
-    runTx("Autorizar bond de ejecutor", (contracts) => {
+  const approveChallengeExecutorBond = (amount = challengeExecutorCost) =>
+    runTx("Autorizar participacion en reto", (contracts) => {
       if (!contracts.challengeFactory) throw new Error("ChallengeFactory is not configured for this network.");
       return writeContractAsync({
         address: contracts.settlementToken,
         abi: erc20Abi,
         functionName: "approve",
         chainId: desiredChainId,
-        args: [contracts.challengeFactory, challengeExecutorApprovalTarget],
+        args: [contracts.challengeFactory, approvalTarget(amount, approvalMode)],
       });
     });
 
@@ -854,7 +927,7 @@ export function useWeb3Flow(
     guardedTx(
       createChallengeLabel,
       [
-        [hasEnoughChallengeBalance, `Necesitas ${formatUsdt(challengeCreateCost)} aUSDT para recompensa + bond.`],
+        [hasEnoughChallengeBalance, `Necesitas ${formatUsdt(challengeCreateCost)} aUSDT para crear este reto.`],
         [!needsChallengeApproval || gaslessChallengesAvailable, `Primero autoriza aUSDT para el reto ${isUnderworldMode ? "Underworld" : "Vanilla"}.`],
       ],
       async () => {
@@ -876,21 +949,24 @@ export function useWeb3Flow(
         ),
         challengeCategoryId,
       ] as const;
+      const fundingModel = input.fundingModel;
       const sponsor = gaslessChallengesAvailable && (challengeExecutionMode === "gasless" || walletKind === "embedded");
       if (sponsor) {
         const permitData = await signSettlementPermit(challengeFactory, challengeCreateCost);
         const sponsoredArgs = [...args, permitData] as const;
+        const functionName = challengeCreationFunction(fundingModel, true);
         return runSponsoredTx(createChallengeLabel, challengeFactory, encodeFunctionData({
-          abi: challengeFactoryAbi, functionName: "createChallengeWithPermit", args: sponsoredArgs,
+          abi: challengeFactoryAbi, functionName, args: sponsoredArgs,
         }), () => writeContractAsync({
-          address: challengeFactory, abi: challengeFactoryAbi, functionName: "createChallengeWithPermit",
+          address: challengeFactory, abi: challengeFactoryAbi, functionName,
           chainId: desiredChainId, args: sponsoredArgs,
         }), true);
       }
+      const functionName = challengeCreationFunction(fundingModel, false);
       return runChallengeTx(createChallengeLabel, encodeFunctionData({
-        abi: challengeFactoryAbi, functionName: "createChallenge", args,
+        abi: challengeFactoryAbi, functionName, args,
       }), () => writeContractAsync({
-        address: challengeFactory, abi: challengeFactoryAbi, functionName: "createChallenge", chainId: desiredChainId, args,
+        address: challengeFactory, abi: challengeFactoryAbi, functionName, chainId: desiredChainId, args,
       }));
       },
     );
@@ -988,12 +1064,21 @@ export function useWeb3Flow(
       }),
     );
 
-  const acceptChallenge = (input: ChallengeActionInput) =>
+  const acceptChallenge = (input: ChallengeActionInput) => {
+    const fundingModel = input.fundingModel ?? "Sponsored";
+    const acceptanceCost = challengeAcceptanceCost(
+      fundingModel,
+      resolvedChallengeBondEstimate.amount,
+      input.rewardPool ?? challengeRewardPool,
+    );
+    const hasAcceptanceBalance = currentBalance >= acceptanceCost;
+    const needsAcceptanceApproval = currentChallengeAllowance < acceptanceCost;
+    return (
     guardedTx(
       "Aceptar reto",
       [
-        [hasEnoughChallengeExecutorBalance, `Necesitas ${formatUsdt(challengeExecutorCost)} aUSDT para el bond de ejecutor.`],
-        [!needsChallengeExecutorApproval || gaslessChallengesAvailable, "Primero autoriza aUSDT para aceptar retos."],
+        [hasAcceptanceBalance, `Necesitas ${formatUsdt(acceptanceCost)} aUSDT para aceptar este reto.`],
+        [!needsAcceptanceApproval || gaslessChallengesAvailable, "Primero autoriza aUSDT para aceptar este reto."],
       ],
       async () => {
       const challengeFactory = addresses.challengeFactory;
@@ -1001,7 +1086,7 @@ export function useWeb3Flow(
       const args = [BigInt(input.challengeId || "1"), input.liveStreamURI || ""] as const;
       const sponsor = gaslessChallengesAvailable && (challengeExecutionMode === "gasless" || walletKind === "embedded");
       if (sponsor) {
-        const permitData = await signSettlementPermit(challengeFactory, challengeExecutorCost);
+        const permitData = await signSettlementPermit(challengeFactory, acceptanceCost);
         const sponsoredArgs = [...args, permitData] as const;
         return runSponsoredTx("Aceptar reto", challengeFactory, encodeFunctionData({
           abi: challengeFactoryAbi, functionName: "acceptChallengeWithPermit", args: sponsoredArgs,
@@ -1016,7 +1101,8 @@ export function useWeb3Flow(
         address: challengeFactory, abi: challengeFactoryAbi, functionName: "acceptChallenge", chainId: desiredChainId, args,
       }));
       },
-    );
+    ));
+  };
 
   const updateChallengeLiveStream = (input: ChallengeActionInput) => {
     const args = [BigInt(input.challengeId || "1"), input.liveStreamURI || ""] as const;
@@ -1267,8 +1353,10 @@ export function useWeb3Flow(
     chainId,
     connectors,
     preferredConnectorName,
+    metaMaskAvailable,
+    hasWalletConnect: Boolean(walletConnectConnector),
     hasSocialLogin,
-    isConnecting,
+    isConnecting: connectionPending || wagmiIsConnecting,
     isSwitching,
     desiredChainId,
     onTargetChain,
@@ -1311,6 +1399,7 @@ export function useWeb3Flow(
     setMarketId,
     setSelectedOutcome,
     connectWallet,
+    connectWalletConnect,
     connectSocialWallet,
     selectChallengeExecutionMode,
     disconnect,

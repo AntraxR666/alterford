@@ -255,4 +255,70 @@ describe("Alterford indexer projections", () => {
     expect(state.claims.get("1:0x0000000000000000000000000000000000000002:reward")?.amount).toBe(3_895_000n);
     expect(state.claims.get("1:0x0000000000000000000000000000000000000004:refund")?.type).toBe("Refund");
   });
+
+  it("projects performer offers and marks the reward escrowed when a sponsor accepts", () => {
+    const state = createInitialProjectionState();
+    const performer = "0x0000000000000000000000000000000000000001";
+    const sponsor = "0x0000000000000000000000000000000000000002";
+
+    const events: AlterfordEvent[] = [
+      {
+        id: "8453:200:0",
+        chainId: 8453,
+        blockNumber: 200n,
+        txHash: "0xoffer",
+        logIndex: 0,
+        type: "ChallengeCreated",
+        payload: {
+          challengeId: "7",
+          creator: performer,
+          rewardPool: 100_000_000n,
+          rulesHash: "0xrules",
+          state: "Open",
+        },
+      },
+      {
+        id: "8453:200:1",
+        chainId: 8453,
+        blockNumber: 200n,
+        txHash: "0xoffer",
+        logIndex: 1,
+        type: "ChallengeFundingModelSelected",
+        payload: {
+          challengeId: "7",
+          fundingModel: "PerformerOffer",
+          performer,
+          sponsor: "0x0000000000000000000000000000000000000000",
+        },
+      },
+      {
+        id: "8453:201:0",
+        chainId: 8453,
+        blockNumber: 201n,
+        txHash: "0xfund",
+        logIndex: 0,
+        type: "ChallengeRewardFunded",
+        payload: { challengeId: "7", sponsor, rewardPool: 100_000_000n },
+      },
+      {
+        id: "8453:201:1",
+        chainId: 8453,
+        blockNumber: 201n,
+        txHash: "0xfund",
+        logIndex: 1,
+        type: "ChallengeAccepted",
+        payload: { challengeId: "7", executor: sponsor, executorBond: 0n },
+      },
+    ];
+
+    for (const event of events) projectEvent(state, event);
+
+    expect(state.challenges.get("7")).toMatchObject({
+      fundingModel: "PerformerOffer",
+      performer,
+      sponsor,
+      rewardEscrowed: true,
+      state: "Accepted",
+    });
+  });
 });

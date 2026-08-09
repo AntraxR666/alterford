@@ -12,5 +12,11 @@ describe("authoritative creation bond categories", () => {
   it("separates Vanilla and Underworld challenge categories", () => {
     expect(challengeBondCategoryId(false)).toBe(bondCategoryId("VANILLA_CHALLENGE"));
     expect(challengeBondCategoryId(true)).toBe(bondCategoryId("UNDERWORLD_CHALLENGE"));
+    expect(challengeBondCategoryId(false, "PerformerOffer")).toBe(
+      bondCategoryId("VANILLA_PERFORMER_OFFER"),
+    );
+    expect(challengeBondCategoryId(true, "PerformerOffer")).toBe(
+      bondCategoryId("UNDERWORLD_PERFORMER_OFFER"),
+    );
   });
 });

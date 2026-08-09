@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
@@ -307,7 +307,7 @@ describe("Alterford PWA shell", () => {
     expect(screen.queryByText("Crear reto protegido")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Crear reto/ }));
     expect(screen.getByText("Crear reto protegido")).toBeInTheDocument();
-    expect(screen.getByText("La wallet conectada sera el creador")).toBeInTheDocument();
+    expect(screen.getByText("Tu wallet sera el patrocinador")).toBeInTheDocument();
     expect(screen.getByText(/Autorizar no mueve aUSDT/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Wallet" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText(/Ruta Wallet lista/i)).toBeInTheDocument();
@@ -316,6 +316,10 @@ describe("Alterford PWA shell", () => {
     expect(screen.getByText("La resolucion paga la recompensa menos fee variable de 4% a 10% o reembolsa si no se cumple.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Crear reto con Wallet/i })).toBeDisabled();
     expect(screen.getByText("Total a bloquear al crear: 110 aUSDT")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Yo cumplire el reto/i })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Yo cumplire el reto/i }));
+    expect(screen.getByText("Total a bloquear al crear: 10 aUSDT")).toBeInTheDocument();
+    expect(screen.getByText(/La recompensa de 100 aUSDT la deposita quien acepte/i)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Explorar retos/ }));
     expect(screen.getByText("Selecciona un reto")).toBeInTheDocument();
     expect(screen.getByText(/Solo apareceran las acciones validas/i)).toBeInTheDocument();
@@ -411,8 +415,9 @@ describe("Alterford PWA shell", () => {
     }
     await user.click(screen.getByRole("button", { name: /Retos/i }));
     await user.click(screen.getByRole("button", { name: /Crear reto/ }));
-    await user.clear(screen.getByLabelText("Reto"));
-    await user.type(screen.getByLabelText("Reto"), "Pago 100 si alguien mata a otra persona");
+    fireEvent.change(screen.getByLabelText("Reto"), {
+      target: { value: "Pago 100 si alguien mata a otra persona" },
+    });
 
     expect(screen.getByText("Reto bloqueado")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Crear reto con Wallet/i })).toBeDisabled();

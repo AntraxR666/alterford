@@ -52,8 +52,8 @@ contract SmokeBaseSepoliaCreateBet {
             keccak256(abi.encodePacked("alterford-base-sepolia-smoke", block.timestamp, actor)),
             "ipfs://alterford/base-sepolia-smoke",
             outcomes,
-            block.timestamp + 90,
-            block.timestamp + 120,
+            block.timestamp + 1 hours,
+            block.timestamp + 2 hours,
             AlterfordTypes.NoWinnersPolicy.RefundAll,
             categoryId
         );

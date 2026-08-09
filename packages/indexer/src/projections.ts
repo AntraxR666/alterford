@@ -2,6 +2,7 @@ import type {
   Address,
   BountyState,
   Category,
+  ChallengeFundingModel,
   ChallengeState,
   MarketState,
   ModeAffinity,
@@ -32,6 +33,10 @@ export interface ChallengeProjection {
   challengeId: string;
   creator: Address;
   executor?: Address;
+  fundingModel: ChallengeFundingModel;
+  sponsor?: Address;
+  performer?: Address;
+  rewardEscrowed: boolean;
   settlementToken?: Address;
   title: string;
   description: string;
@@ -401,6 +406,9 @@ export function projectEvent(state: ProjectionState, event: AlterfordEvent): Pro
       state.challenges.set(event.payload.challengeId, {
         challengeId: event.payload.challengeId,
         creator: event.payload.creator,
+        fundingModel: "Sponsored",
+        sponsor: event.payload.creator,
+        rewardEscrowed: true,
         settlementToken: event.payload.settlementToken,
         title: `Reto ${event.payload.challengeId}`,
         description: "Reto Underworld creado por usuario.",
@@ -412,10 +420,37 @@ export function projectEvent(state: ProjectionState, event: AlterfordEvent): Pro
         rulesHash: event.payload.rulesHash,
       });
       break;
+    case "ChallengeFundingModelSelected": {
+      const challenge = state.challenges.get(event.payload.challengeId);
+      if (challenge) {
+        challenge.fundingModel = event.payload.fundingModel;
+        challenge.rewardEscrowed = event.payload.fundingModel === "Sponsored";
+        challenge.performer = isZeroAddress(event.payload.performer)
+          ? undefined
+          : event.payload.performer;
+        challenge.sponsor = isZeroAddress(event.payload.sponsor)
+          ? undefined
+          : event.payload.sponsor;
+      }
+      break;
+    }
+    case "ChallengeRewardFunded": {
+      const challenge = state.challenges.get(event.payload.challengeId);
+      if (challenge) {
+        challenge.sponsor = event.payload.sponsor;
+        challenge.rewardEscrowed = true;
+      }
+      break;
+    }
     case "ChallengeAccepted": {
       const challenge = state.challenges.get(event.payload.challengeId);
       if (challenge) {
         challenge.executor = event.payload.executor;
+        if (challenge.fundingModel === "PerformerOffer") {
+          challenge.sponsor = event.payload.executor;
+        } else {
+          challenge.performer = event.payload.executor;
+        }
         challenge.state = "Accepted";
       }
       break;
@@ -428,7 +463,12 @@ export function projectEvent(state: ProjectionState, event: AlterfordEvent): Pro
     case "ChallengeEvidenceSubmitted": {
       const challenge = state.challenges.get(event.payload.challengeId);
       if (challenge) {
-        challenge.executor = event.payload.executor;
+        if (challenge.fundingModel === "PerformerOffer") {
+          challenge.performer = event.payload.executor;
+        } else {
+          challenge.executor = event.payload.executor;
+          challenge.performer = event.payload.executor;
+        }
         challenge.evidenceHash = event.payload.evidenceHash;
         challenge.evidenceURI = event.payload.evidenceURI;
         challenge.liveStreamURI = event.payload.liveStreamURI;
@@ -605,6 +645,10 @@ export function projectEvent(state: ProjectionState, event: AlterfordEvent): Pro
 
 function bondKey(entityType: string, entityId: string): string {
   return `${entityType}:${entityId}`;
+}
+
+function isZeroAddress(address: Address): boolean {
+  return address.toLowerCase() === "0x0000000000000000000000000000000000000000";
 }
 
 function emptyBond(entityType: string, entityId: string): BondProjection {

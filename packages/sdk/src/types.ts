@@ -31,6 +31,7 @@ export type ChallengeState =
   | "Refunded"
   | "Disputed";
 export type ModeAffinity = "Vanilla" | "Underworld" | "Both";
+export type ChallengeFundingModel = "Sponsored" | "PerformerOffer";
 export type CreationEntityType = "Market" | "Bounty" | "Challenge";
 export type CreatorTier = "Basic" | "Verified" | "Premium" | "Suspended";
 export type RiskLevel = "Low" | "Medium" | "High" | "Critical";
@@ -153,6 +154,10 @@ export interface ChallengeDTO {
   address: Address;
   creator: Address;
   executor?: Address;
+  fundingModel?: ChallengeFundingModel;
+  sponsor?: Address;
+  performer?: Address;
+  rewardEscrowed?: boolean;
   settlementToken?: Address;
   title: string;
   description: string;

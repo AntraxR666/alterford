@@ -472,6 +472,34 @@ export const challengeFactoryAbi = [
   },
   {
     type: "function",
+    name: "fundingModelByChallenge",
+    stateMutability: "view",
+    inputs: [{ name: "challengeId", type: "uint256" }],
+    outputs: [{ name: "", type: "uint8" }],
+  },
+  {
+    type: "function",
+    name: "rewardEscrowedByChallenge",
+    stateMutability: "view",
+    inputs: [{ name: "challengeId", type: "uint256" }],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    type: "function",
+    name: "sponsorOf",
+    stateMutability: "view",
+    inputs: [{ name: "challengeId", type: "uint256" }],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "performerOf",
+    stateMutability: "view",
+    inputs: [{ name: "challengeId", type: "uint256" }],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
     name: "acceptChallenge",
     stateMutability: "nonpayable",
     inputs: [
@@ -650,6 +678,25 @@ export const challengeFactoryAbi = [
       { name: "challengeId", type: "uint256", indexed: true },
       { name: "executor", type: "address", indexed: true },
       { name: "executorBond", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "ChallengeFundingModelSelected",
+    inputs: [
+      { name: "challengeId", type: "uint256", indexed: true },
+      { name: "fundingModel", type: "uint8", indexed: false },
+      { name: "performer", type: "address", indexed: true },
+      { name: "sponsor", type: "address", indexed: true },
+    ],
+  },
+  {
+    type: "event",
+    name: "ChallengeRewardFunded",
+    inputs: [
+      { name: "challengeId", type: "uint256", indexed: true },
+      { name: "sponsor", type: "address", indexed: true },
+      { name: "rewardPool", type: "uint256", indexed: false },
     ],
   },
   {

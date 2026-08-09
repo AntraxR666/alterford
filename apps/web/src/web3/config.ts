@@ -29,7 +29,7 @@ const targetRpcUrl = targetChain.id === baseSepolia.id
   ? import.meta.env.VITE_BASE_SEPOLIA_RPC_URL || baseSepolia.rpcUrls.default.http[0]
   : targetChain.rpcUrls.default.http[0];
 const connectors = [
-  injected(),
+  injected({ target: "metaMask", unstable_shimAsyncInject: 2_000 }),
   ...(walletConnectProjectId
     ? [
         walletConnect({

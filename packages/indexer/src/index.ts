@@ -4,5 +4,6 @@ export * from "./listener.js";
 export * from "./observability.js";
 export * from "./projections.js";
 export * from "./reorg.js";
+export * from "./rpcConfig.js";
 export * from "./server.js";
 export * from "./store.js";

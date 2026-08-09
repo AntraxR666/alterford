@@ -142,6 +142,19 @@
   },
   {
     "type": "function",
+    "name": "CATEGORY_UNDERWORLD_PERFORMER_OFFER",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "CATEGORY_USER_MARKETS",
     "inputs": [],
     "outputs": [
@@ -182,6 +195,19 @@
   {
     "type": "function",
     "name": "CATEGORY_VANILLA_MARKET",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "CATEGORY_VANILLA_PERFORMER_OFFER",
     "inputs": [],
     "outputs": [
       {

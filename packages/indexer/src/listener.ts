@@ -12,6 +12,7 @@ import {
 import {
   createPublicClient,
   decodeEventLog,
+  fallback,
   hexToString,
   http,
   type Abi,
@@ -34,6 +35,7 @@ import { saveIndexerState } from "./store.js";
 
 export interface MarketFactoryListenerOptions {
   rpcUrl: string;
+  rpcUrls?: readonly string[];
   chainId: number;
   marketFactory: Address;
   bountyFactory?: Address;
@@ -78,13 +80,19 @@ export async function pollMarketFactoryEvents(
   options: MarketFactoryListenerOptions,
 ): Promise<PersistedIndexerState> {
   const confirmations = BigInt(options.confirmations ?? indexerState.cursor.confirmations);
+  const rpcUrls = options.rpcUrls?.length ? [...options.rpcUrls] : [options.rpcUrl];
   const chain = {
     id: options.chainId,
     name: `Alterford ${options.chainId}`,
     nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-    rpcUrls: { default: { http: [options.rpcUrl] } },
+    rpcUrls: { default: { http: rpcUrls } },
   } satisfies Chain;
-  const client = createPublicClient({ chain, transport: http(options.rpcUrl) });
+  const client = createPublicClient({
+    chain,
+    transport: rpcUrls.length === 1
+      ? http(rpcUrls[0])
+      : fallback(rpcUrls.map((rpcUrl) => http(rpcUrl))),
+  });
   const hydratedMarkets = await hydrateMarketLifecycle(
     indexerState.projection,
     client,
@@ -454,6 +462,27 @@ export async function decodeAlterfordLog(
             challengeId: String(args.challengeId),
             executor: args.executor as Address,
             executorBond: args.executorBond as bigint,
+          },
+        };
+      case "ChallengeFundingModelSelected":
+        return {
+          ...base,
+          type: "ChallengeFundingModelSelected",
+          payload: {
+            challengeId: String(args.challengeId),
+            fundingModel: Number(args.fundingModel) === 1 ? "PerformerOffer" : "Sponsored",
+            performer: args.performer as Address,
+            sponsor: args.sponsor as Address,
+          },
+        };
+      case "ChallengeRewardFunded":
+        return {
+          ...base,
+          type: "ChallengeRewardFunded",
+          payload: {
+            challengeId: String(args.challengeId),
+            sponsor: args.sponsor as Address,
+            rewardPool: args.rewardPool as bigint,
           },
         };
       case "ChallengeLiveStreamUpdated":
